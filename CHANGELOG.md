@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pathing from splitting this out of x-test repository missed one import case.
+  Just a simple import path rename.
+
 ## [1.0.0-rc.1] - 2025-10-24
 
 ### Added
