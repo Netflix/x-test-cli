@@ -1,0 +1,50 @@
+{
+  "name": "@netflix/x-test-cli",
+  "description": "a simple cli for x-test",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/Netflix/x-test",
+  "type": "module",
+  "bin": {
+    "x-test": "./x-test-cli.js"
+  },
+  "exports": {
+    "./x-test-cli.js": "./x-test-cli.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "scripts": {
+    "lint": "eslint --max-warnings=0 .",
+    "lint-fix": "eslint --fix .",
+    "bump": "./bump.sh"
+  },
+  "files": [
+    "LICENSE",
+    "/x-test-cli.js",
+    "/x-test-cli-common.js",
+    "/x-test-cli-puppeteer.js"
+  ],
+  "dependencies": {
+    "tap-parser": ">=18.0.0",
+    "puppeteer": ">=20.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.20.1"
+  },
+  "engines": {
+    "node": ">=20.18",
+    "npm": ">=10.8"
+  },
+  "contributors": [
+    {
+      "name": "Andrew Seier",
+      "email": "aseier@netflix.com"
+    },
+    {
+      "name": "Casey Klebba",
+      "email": "cklebba@netflix.com"
+    }
+  ]
+}
