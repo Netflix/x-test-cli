@@ -1,0 +1,8 @@
+TAP Version 14
+ok 1 - normal pass
+ok 2 - not supported on this platform # SKIP
+not ok 3 - feature not built yet # TODO
+ok 4 - another pass
+ok 5 - quarantined for now # SKIP flaky
+ok 6 - surprise, this passed # TODO meant to fail
+1..6
