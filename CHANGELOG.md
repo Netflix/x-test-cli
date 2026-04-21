@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- NPM token lives in a GH environment for publish action (more secure).
+
 ## [1.0.0-rc.3] - 2026-04-21
 
 ### Added
