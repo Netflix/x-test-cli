@@ -1,7 +1,7 @@
 {
   "name": "@netflix/x-test-cli",
   "description": "a simple cli for x-test",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "license": "Apache-2.0",
   "repository": "https://github.com/Netflix/x-test",
   "type": "module",
@@ -38,8 +38,12 @@
     "playwright": ">=1.40.0"
   },
   "peerDependenciesMeta": {
-    "puppeteer": { "optional": true },
-    "playwright": { "optional": true }
+    "puppeteer": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "eslint": "^9.20.1"
