@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { XTestCliBrowserPuppeteer } from './x-test-cli-browser.js';
+import { XTestCliBrowserPuppeteer, XTestCliBrowserPlaywright } from './x-test-cli-browser.js';
+
+const SUPPORTED_CLIENTS = ['puppeteer', 'playwright'];
 
 // Define allowed arguments
 const ALLOWED_ARGS = ['client', 'url',  'coverage', 'test-name'];
@@ -54,8 +56,9 @@ if (!options.url) {
 }
 
 // Validate client type
-if (options.client !== 'puppeteer') {
-  const message = `Error: Unsupported client "${options.client}". Supported clients: "puppeteer".`;
+if (!SUPPORTED_CLIENTS.includes(options.client)) {
+  const supported = SUPPORTED_CLIENTS.map(client => `"${client}"`).join(', ');
+  const message = `Error: Unsupported client "${options.client}". Supported clients: ${supported}.`;
   console.error(new Error(message)); // eslint-disable-line no-console
   process.exit(1);
 }
@@ -78,7 +81,6 @@ if (options.coverage) {
 const clientOptions = {
   url: options.url,
   coverage,
-  launchOptions: { args: ['--no-sandbox', '--disable-setuid-sandbox'] },
 };
 
 // Handle testName filtering by adding to URL
@@ -92,6 +94,9 @@ if (options.testName) {
 switch (options.client) {
   case 'puppeteer':
     await XTestCliBrowserPuppeteer.run(clientOptions);
+    break;
+  case 'playwright':
+    await XTestCliBrowserPlaywright.run(clientOptions);
     break;
   default: {
     const message = `Error: Unsupported client "${options.client}".`;
