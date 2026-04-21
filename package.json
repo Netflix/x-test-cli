@@ -23,8 +23,7 @@
   "files": [
     "LICENSE",
     "/x-test-cli.js",
-    "/x-test-cli-common.js",
-    "/x-test-cli-puppeteer.js"
+    "/x-test-cli-browser.js"
   ],
   "dependencies": {
     "tap-parser": ">=18.0.0",

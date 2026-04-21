@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { XTestPuppeteerCli } from './x-test-cli-puppeteer.js';
+import { XTestCliBrowserPuppeteer } from './x-test-cli-browser.js';
 
 // Define allowed arguments
 const ALLOWED_ARGS = ['client', 'url',  'coverage', 'test-name'];
@@ -91,7 +91,7 @@ if (options.testName) {
 // Run the appropriate client
 switch (options.client) {
   case 'puppeteer':
-    await XTestPuppeteerCli.run(clientOptions);
+    await XTestCliBrowserPuppeteer.run(clientOptions);
     break;
   default: {
     const message = `Error: Unsupported client "${options.client}".`;
