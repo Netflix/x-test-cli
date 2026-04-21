@@ -52,11 +52,13 @@ export class XTestCliBrowserPuppeteer {
       // Navigate to test page
       await page.goto(url);
 
-      // Wait for test readiness
-      await page.evaluate(XTestCliBrowserPuppeteer.#runScript());
+      // Wait for test readiness. The browser tells us whether it’s asking
+      //  for coverage data — only call `cover()` when it is, otherwise we
+      //  hang forever waiting for a second `x-test-root-end` that never comes.
+      const { coverageRequested } = await page.evaluate(XTestCliBrowserPuppeteer.#runScript());
 
-      // Handle coverage if collected
-      if (coverage && page.coverage) {
+      // Handle coverage if the browser requested it.
+      if (coverage && page.coverage && coverageRequested) {
         const js = await page.coverage.stopJSCoverage();
         await page.evaluate(XTestCliBrowserPuppeteer.#coverScript(), { js });
       }
@@ -73,7 +75,9 @@ export class XTestCliBrowserPuppeteer {
 
   /**
    * Browser-injected factory: handshakes with x-test over BroadcastChannel
-   * and resolves once the run has ended (or coverage has been requested).
+   * and resolves with `{ coverageRequested, ended }` — telling the caller
+   * which terminal event fired, so coverage can be skipped when the root
+   * didn’t ask for it.
    */
   static #runScript() {
     return async () => {
@@ -81,14 +85,24 @@ export class XTestCliBrowserPuppeteer {
       return new Promise(resolve => {
         const onMessage = evt => {
           const { type, data } = evt.data;
-          if (
-            type === 'x-test-root-coverage-request' ||
-            type === 'x-test-root-end' ||
-            (type === 'x-test-root-pong' && (data.waiting || data.ended))
-          ) {
+          let resolution = null;
+          switch (type) {
+            case 'x-test-root-coverage-request':
+              resolution = { coverageRequested: true, ended: false };
+              break;
+            case 'x-test-root-end':
+              resolution = { coverageRequested: false, ended: true };
+              break;
+            case 'x-test-root-pong':
+              if (data.waiting || data.ended) {
+                resolution = { coverageRequested: !!data.waiting, ended: !!data.ended };
+              }
+              break;
+          }
+          if (resolution) {
             channel.removeEventListener('message', onMessage);
             channel.close();
-            resolve();
+            resolve(resolution);
           }
         };
         channel.addEventListener('message', onMessage);
