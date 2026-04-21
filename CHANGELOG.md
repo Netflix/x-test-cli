@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added support for `playwright` as a `--client` option (#6).
+
+### Changed
+
+- Library moves to bring-your-own-browser. This means `puppeteer` moved from
+  `dependencies` to `peerDependencies` with `optional: true` (#5).
+
 ### Fixed
 
 - CLI no longer hangs if `--coverage` is passed, but test suite never calls
