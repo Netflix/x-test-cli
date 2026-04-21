@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--reporter=tap|auto` flag. `tap` is raw passthrough; `auto` (default)
+  adds ANSI colorization for TTY stdout and stays raw when piped.
+  Colorization never alters content — stripping the ANSI codes yields
+  byte-identical TAP (#7).
 - Added support for `playwright` as a `--client` option (#6).
 
 ### Changed
 
+- The `tap-parser` dependency is removed. It’s been replaced by a minimal,
+  internal implementation (#4).
 - Library moves to bring-your-own-browser. This means `puppeteer` moved from
   `dependencies` to `peerDependencies` with `optional: true` (#5).
 

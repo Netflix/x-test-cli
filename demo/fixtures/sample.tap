@@ -1,0 +1,415 @@
+TAP version 14
+# Subtest: http://127.0.0.1:8080/test/
+    1..0
+ok 1 - http://127.0.0.1:8080/test/
+# Subtest: http://127.0.0.1:8080/test/test-reporter.html
+    # Subtest: render
+        ok 1 - prints out basic test
+        ok 2 - bails
+        1..2
+    ok 1 - render
+    # Subtest: parse
+        ok 1 - parses test
+        ok 2 - parses bail test
+        ok 3 - parses diagnostic
+        ok 4 - parses test line
+        ok 5 - parses "SKIP" test line
+        ok 6 - parses "TODO" test line
+        ok 7 - parses "not ok" test line
+        ok 8 - parses "not ok", "TODO" test line
+        ok 9 - parses version
+        ok 10 - parses in-failures bare URL as link
+        ok 11 - parses in-failures breadcrumb arrow as failure
+        ok 12 - parses in-failures yaml body as failure
+        ok 13 - tags in-failures blank separator as failure
+        ok 14 - leaves pre-failures diagnostics untouched
+        1..14
+    ok 2 - parse
+    1..2
+ok 2 - http://127.0.0.1:8080/test/test-reporter.html
+# Subtest: http://127.0.0.1:8080/test/test-suite.html
+    # Subtest: initialize
+        ok 1 - sets up default state and publishes when ready
+        ok 2 - marks state as bailed when any test bails
+        ok 3 - runs a test when told, ok
+        ok 4 - runs a test when told, skip
+        ok 5 - runs a test when told, not ok
+        ok 6 - runs a test when told, todo, ok
+        ok 7 - runs a test when told, todo, not ok
+        not ok 8 - closes registration after it is ready
+          ---
+          message: not ok
+          severity: fail
+          stack: |-
+            Error: not ok
+                at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+                at assert (http://127.0.0.1:8080/x-test.js:14:48)
+                at http://127.0.0.1:8080/test/test-suite.js:222:5
+                at async XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:27)
+          ...
+        1..8
+    not ok 1 - initialize
+    # Subtest: test
+        ok 1 - publishes new test
+        1..1
+    ok 2 - test
+    # Subtest: describe
+        ok 1 - publishes new describe-start and describe-end
+        ok 2 - respects current describe for multi-level nesting
+        ok 3 - publishes nested describe registered in callback
+        ok 4 - publishes nested it registered in callback
+        ok 5 - bails for failures during describe callback
+        ok 6 - throws if callback is not a function
+        1..6
+    ok 3 - describe
+    # Subtest: it
+        ok 1 - publishes new it
+        ok 2 - throws if “it” is not given a function as a callback
+        1..2
+    ok 4 - it
+    # Subtest: itSkip
+        ok 1 - publishes new skip
+        1..1
+    ok 5 - itSkip
+    # Subtest: itTodo
+        ok 1 - publishes new todo
+        1..1
+    ok 6 - itTodo
+    # Subtest: itOnly
+        ok 1 - publishes new only
+        1..1
+    ok 7 - itOnly
+    # Subtest: register
+        # Subtest: coverage
+            ok 1 - publishes new coverage
+            ok 2 - throws for bad goal value
+            1..2
+        ok 1 - coverage
+        1..1
+    ok 8 - register
+    # Subtest: waitFor
+        ok 1 - adds a promise when called
+        ok 2 - publishes "x-test-ready" when resolved
+        ok 3 - awaits resolution of all promises to publish "x-test-ready"
+        1..3
+    ok 9 - waitFor
+    # Subtest: bail
+        ok 1 - marks state as ended
+        ok 2 - publishes to parent frame
+        1..2
+    ok 10 - bail
+    # Subtest: error
+        ok 1 - turns error into basic object
+        ok 2 - handles string errors
+        1..2
+    ok 11 - error
+    1..11
+not ok 3 - http://127.0.0.1:8080/test/test-suite.html
+# Subtest: http://127.0.0.1:8080/test/test-root.html
+    # Subtest: level
+        ok 1 - returns level = 1 for "test-plan"
+        ok 2 - returns level = 0 for "test-start"
+        ok 3 - returns level = 0 for "test-end"
+        ok 4 - returns level = 0 for "coverage"
+        ok 5 - returns level for "describe-plan" # SKIP
+        ok 6 - returns level for "describe-start" # SKIP
+        ok 7 - returns level for "describe-end" # SKIP
+        ok 8 - returns level for "it" # SKIP
+        1..8
+    ok 1 - level
+    # Subtest: count
+        ok 1 - returns count for "test-plan"
+        ok 2 - returns count for "describe-plan"
+        ok 3 - returns count for "exit"
+        1..3
+    ok 2 - count
+    # Subtest: yaml
+        ok 1 - finds the given "it" step and returns a yaml object
+        1..1
+    ok 3 - yaml
+    # Subtest: end
+        ok 1 - marks state as ended
+        ok 2 - marks waiting as false
+        ok 3 - publishes that the test has ended
+        1..3
+    ok 4 - end
+    # Subtest: analyzeHrefCoverage
+        ok 1 - test coverage
+        1..1
+    ok 5 - analyzeHrefCoverage
+    # Subtest: collectFailureStepIds
+        ok 1 - returns failing it step ids in order, excluding TODO and passing
+        ok 2 - does not include failing coverage steps
+        1..2
+    ok 6 - collectFailureStepIds
+    # Subtest: formatFailure
+        ok 1 - formats a failing "it" with arrow-joined breadcrumb and raw stack
+        ok 2 - falls back to "Error: <message>" when stack is missing
+        1..2
+    ok 7 - formatFailure
+    1..7
+ok 4 - http://127.0.0.1:8080/test/test-root.html
+# Subtest: http://127.0.0.1:8080/test/test-tap.html
+    # Subtest: version
+        ok 1 - renders "TAP version 14"
+        1..1
+    ok 1 - version
+    # Subtest: diagnostic
+        ok 1 - basic
+        ok 2 - basic, indented
+        ok 3 - multiline
+        ok 4 - multiline, indented
+        1..4
+    ok 2 - diagnostic
+    # Subtest: testLine
+        ok 1 - basic, passing
+        ok 2 - basic, passing, indented
+        ok 3 - basic, failing
+        ok 4 - basic, failing, indented
+        ok 5 - multiline
+        ok 6 - multiline, indented
+        ok 7 - skip
+        ok 8 - skip, indented
+        ok 9 - todo, passing
+        ok 10 - todo, passing, indented
+        ok 11 - todo, failing
+        ok 12 - todo, failing, indented
+        1..12
+    ok 3 - testLine
+    # Subtest: subtest
+        ok 1 - basic
+        ok 2 - basic, indented
+        1..2
+    ok 4 - subtest
+    # Subtest: yaml
+        ok 1 - basic
+        ok 2 - indented
+        1..2
+    ok 5 - yaml
+    # Subtest: bailOut
+        ok 1 - basic
+        ok 2 - without message
+        1..2
+    ok 6 - bailOut
+    # Subtest: plan
+        ok 1 - basic
+        1..1
+    ok 7 - plan
+    1..7
+ok 5 - http://127.0.0.1:8080/test/test-tap.html
+# Subtest: http://127.0.0.1:8080/test/test-common.html
+    # Subtest: timeout
+        ok 1 - resolves with XTestCommon.TIMEOUT after the interval
+        1..1
+    ok 1 - timeout
+    # Subtest: domContentLoadedPromise
+        ok 1 - resolves immediately when readyState is "complete"
+        ok 2 - resolves on DOMContentLoaded when readyState is not "complete"
+        1..2
+    ok 2 - domContentLoadedPromise
+    # Subtest: iframeError
+        ok 1 - resolves with XTestCommon.IFRAME_ERROR when the error event fires
+        1..1
+    ok 3 - iframeError
+    # Subtest: iframeLoad
+        ok 1 - resolves with XTestCommon.IFRAME_LOAD when the load event fires
+        1..1
+    ok 4 - iframeLoad
+    1..4
+ok 6 - http://127.0.0.1:8080/test/test-common.html
+# Subtest: http://127.0.0.1:8080/test/test-boot.html
+    # Subtest: <script type="module"> in <head>
+        ok 1 - registers into the same suite as body-placed scripts
+        1..1
+    ok 1 - <script type="module"> in <head>
+    # Subtest: first <script type="module"> in <body>
+        ok 1 - registers tests
+        1..1
+    ok 2 - first <script type="module"> in <body>
+    # Subtest: second <script type="module"> in <body>
+        not ok 1 - is not silently dropped after the first script evaluates
+          ---
+          message: not ok
+          severity: fail
+          stack: |-
+            Error: not ok
+                at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+                at assert (http://127.0.0.1:8080/x-test.js:14:48)
+                at http://127.0.0.1:8080/test/test-boot-c.js:5:5
+                at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+                at http://127.0.0.1:8080/x-test-suite.js:19:22
+                at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)
+          ...
+        1..1
+    not ok 3 - second <script type="module"> in <body>
+    # Subtest: inline <script type="module">
+        ok 1 - registers alongside src-backed scripts
+        1..1
+    ok 4 - inline <script type="module">
+    1..4
+not ok 7 - http://127.0.0.1:8080/test/test-boot.html
+# Subtest: http://127.0.0.1:8080/test/test-scratch.html
+    # Subtest: this wrapper exercises describe only logic
+        # Subtest: this wrapper exercises describe skip logic
+            ok 1 - this tests shows inheritance of outer grouping skip directive # SKIP
+            not ok 2 - this tests that inner flags override outer ones
+              ---
+              message: not ok
+              severity: fail
+              stack: |-
+                Error: not ok
+                    at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+                    at assert (http://127.0.0.1:8080/x-test.js:14:48)
+                    at http://127.0.0.1:8080/test/test-scratch.js:9:7
+                    at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+                    at http://127.0.0.1:8080/x-test-suite.js:19:22
+                    at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)
+              ...
+            1..2
+        not ok 1 - this wrapper exercises describe skip logic
+        # Subtest: this wrapper exercises describe todo logic
+            not ok 1 - this tests shows inheritance of outer grouping todo directive # TODO
+              ---
+              message: this error is expected
+              severity: todo
+              stack: |-
+                Error: this error is expected
+                    at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+                    at assert (http://127.0.0.1:8080/x-test.js:14:48)
+                    at http://127.0.0.1:8080/test/test-scratch.js:14:7
+                    at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+                    at http://127.0.0.1:8080/x-test-suite.js:19:22
+                    at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)
+              ...
+            1..1
+        ok 2 - this wrapper exercises describe todo logic
+        ok 3 - this simply exercises the skip logic for coverage # SKIP
+        # Subtest: this wrapper allows inner tests to declare their own flags
+            not ok 1 - this simply exercises the todo logic for coverage # TODO
+              ---
+              message: this error is expected
+              severity: todo
+              stack: |-
+                Error: this error is expected
+                    at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+                    at assert (http://127.0.0.1:8080/x-test.js:14:48)
+                    at http://127.0.0.1:8080/test/test-scratch.js:22:7
+                    at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+                    at http://127.0.0.1:8080/x-test-suite.js:19:22
+                    at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)
+              ...
+            ok 2 - this simply exercises the only logic for coverage
+            1..2
+        ok 4 - this wrapper allows inner tests to declare their own flags
+        1..4
+    not ok 1 - this wrapper exercises describe only logic
+    # Subtest: interval
+        not ok 1 - times out after interval - this is supposed to fail # TODO
+          ---
+          message: timeout after 0ms
+          severity: todo
+          stack: |-
+            Error: timeout after 0ms
+                at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:65:19)
+          ...
+        1..1
+    ok 2 - interval
+    ok 3 - asynchronously registered tests work
+    1..3
+not ok 8 - http://127.0.0.1:8080/test/test-scratch.html
+not ok 9 - 75% coverage goal for http://127.0.0.1:8080/x-test-reporter.js (got 74.88%)
+# 1       |  import styleSheet from './x-test-reporter.css.js';
+# …
+# 35      |      if (!el) {
+# 36 !    |        throw new Error(`Expected ${id} to exist.`);
+# 37 !    |      }
+# 38      |      if (el.tagName.toLowerCase() !== expectedTag) {
+# 39 !    |        throw new Error(`Expected ${id} to be <${expectedTag}>, got <${el.tagName.toLowerCase()}>`);
+# 40 !    |      }
+# …
+# 47      |      if (!this.shadowRoot) {
+# 48 !    |        throw new Error('Shadow root must exist after attachShadow');
+# 49 !    |      }
+# …
+# 70      |      this.#references.toggle.addEventListener('click', () => {
+# 71 !    |        this.hasAttribute('open') ? this.removeAttribute('open') : this.setAttribute('open', '');
+# 72 !    |        localStorage.setItem('x-test-reporter-closed', String(!this.hasAttribute('open')));
+# 73 !    |      });
+# …
+# 77      |      const resize = (event) => {
+# 78 !    |        const nextHeaderY = event.clientY - Number(this.getAttribute('dragging'));
+# …
+# 82 !    |        localStorage.setItem('x-test-reporter-height', this.style.height);
+# 83 !    |      };
+# 84      |      this.#references.form.addEventListener('reset', () => {
+# 85 !    |        const url = new URL(location.href);
+# 86 !    |        url.searchParams.delete('x-test-name');
+# 87 !    |        location.href = url.href;
+# 88 !    |      });
+# …
+# 92      |      const handleSubmit = (event) => {
+# 93 !    |        event.preventDefault();
+# …
+# 102 !   |        location.href = url.href;
+# 103 !   |      };
+# …
+# 108     |      const handlePointerDown = (event) => {
+# 109 !   |        if (this.hasAttribute('open')) {
+# …
+# 117 !   |        }
+# 118 !   |      };
+# 119     |      this.#references.header.addEventListener('pointerdown', handlePointerDown);
+# 120     |      addEventListener('pointerup', () => {
+# 121 !   |        removeEventListener('pointermove', resize);
+# …
+# 125 !   |        }
+# 126 !   |      });
+# …
+# 135     |        if (text === '# Failures:') {
+# 136 !   |          this.#inFailures = true;
+# 137 !   |        }
+# …
+# 211     |        } else if (text.match(/^(?: {4})*Bail out!.*/)) {
+# 212 !   |          result.attributes.bail = '';
+# 213 !   |          result.failed = true;
+# 214 !   |        }
+# …
+# 229     |  
+ok 10 - 71% coverage goal for http://127.0.0.1:8080/x-test-root.js (got 75.18%)
+ok 11 - 96% coverage goal for http://127.0.0.1:8080/x-test-suite.js (got 96.56%)
+ok 12 - 100% coverage goal for http://127.0.0.1:8080/x-test-tap.js (got 100.00%)
+ok 13 - 100% coverage goal for http://127.0.0.1:8080/x-test.js (got 100.00%)
+1..13
+# Failures:
+# 
+# http://127.0.0.1:8080/test/test-suite.html
+# > initialize
+# > closes registration after it is ready
+# Error: not ok
+#     at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+#     at assert (http://127.0.0.1:8080/x-test.js:14:48)
+#     at http://127.0.0.1:8080/test/test-suite.js:222:5
+#     at async XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:27)
+# 
+# http://127.0.0.1:8080/test/test-boot.html
+# > second <script type="module"> in <body>
+# > is not silently dropped after the first script evaluates
+# Error: not ok
+#     at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+#     at assert (http://127.0.0.1:8080/x-test.js:14:48)
+#     at http://127.0.0.1:8080/test/test-boot-c.js:5:5
+#     at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+#     at http://127.0.0.1:8080/x-test-suite.js:19:22
+#     at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)
+# 
+# http://127.0.0.1:8080/test/test-scratch.html
+# > this wrapper exercises describe only logic
+# > this wrapper exercises describe skip logic
+# > this tests that inner flags override outer ones
+# Error: not ok
+#     at XTestSuite.assert (http://127.0.0.1:8080/x-test-suite.js:112:15)
+#     at assert (http://127.0.0.1:8080/x-test.js:14:48)
+#     at http://127.0.0.1:8080/test/test-scratch.js:9:7
+#     at XTestSuite.onRun (http://127.0.0.1:8080/x-test-suite.js:63:47)
+#     at http://127.0.0.1:8080/x-test-suite.js:19:22
+#     at BroadcastChannel.<anonymous> (http://127.0.0.1:8080/x-test.js:143:5)

@@ -1,0 +1,5 @@
+TAP Version 14
+ok 1 - adds two numbers
+ok 2 - subtracts two numbers
+not ok 3 - divides by zero
+1..3

@@ -42,10 +42,16 @@ Required:
 Options:
   --coverage=<true|false>          Enable V8 JS coverage collection. Default: false.
   --test-name=<regex>              Filter tests by name (regex, matched against full name including describe chain).
+  --reporter=<tap|auto>            Output mode: 'tap' = raw passthrough; 'auto' = colorize when stdout is a TTY. Default: auto.
+
+Environment:
+  NO_COLOR                         Any non-empty value disables ANSI colorization (https://no-color.org).
+  FORCE_COLOR                      Any non-empty value forces ANSI colorization, even when stdout is not a TTY.
 
 Examples:
   x-test --client=puppeteer  --url=http://localhost:8080/test/
   x-test --client=puppeteer  --url=http://localhost:8080/test/ --coverage=true
+  x-test --client=puppeteer  --url=http://localhost:8080/test/ --reporter=tap | faucet
   x-test --client=playwright --url=http://localhost:8080/test/ --test-name='^render '
 ```
 
@@ -89,14 +95,24 @@ browser-side runner via the `x-test-name` URL query param.
 
 When `--coverage=true` and the browser exposes V8 coverage (Chromium does), the
 CLI collects coverage and hands it to the x-test root for processing.
-Playwright and Puppeteer emit coverage in different shapes; the CLI normalizes
-Playwright’s raw V8 output to Puppeteer’s `{text, ranges}` shape so the
-downstream x-test code sees identical input regardless of client.
+
+### Reporters
+
+The CLI emits TAP14 to stdout.
+
+- `--reporter=tap` — raw passthrough. Use this when piping to another TAP
+  consumer (CI log collectors, `faucet`, etc.).
+- `--reporter=auto` (default) — ANSI colorization when stdout is a TTY, raw when
+  piped. Stripping the ANSI codes yields byte-identical TAP, so the output is
+  safe for anything downstream even in auto mode.
+
+Colorization respects [`NO_COLOR`](https://no-color.org) and `FORCE_COLOR`
+environment variables.
 
 ### Exit code
 
-Non-zero if any test failed, the browser emitted a `Bail out!`, or the driver
-crashed. `0` otherwise.
+Non-zero if any test failed, the plan didn’t match the asserts seen,
+the browser emitted a `Bail out!`, or the driver crashed. `0` otherwise.
 
 ## Configuring Playwright
 

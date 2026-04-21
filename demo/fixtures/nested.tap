@@ -1,0 +1,20 @@
+TAP Version 14
+# Subtest: math
+    # Subtest: addition
+        ok 1 - 1 + 1 is 2
+        ok 2 - 0 + 0 is 0
+        1..2
+    ok 1 - addition
+    # Subtest: subtraction
+        ok 1 - 2 - 1 is 1
+        not ok 2 - 1 - 2 is -1 # TODO signed support
+        1..2
+    ok 2 - subtraction
+    1..2
+ok 1 - math
+# Subtest: strings
+    ok 1 - concat
+    ok 2 - length
+    1..2
+ok 2 - strings
+1..2

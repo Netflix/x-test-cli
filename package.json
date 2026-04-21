@@ -18,16 +18,21 @@
   "scripts": {
     "lint": "eslint --max-warnings=0 .",
     "lint-fix": "eslint --fix .",
+    "test": "node --test test/*.test.js",
+    "demo": "node demo/index.js",
+    "demo:color": "node demo/color.js",
+    "demo:tap": "node demo/tap.js",
     "bump": "./bump.sh"
   },
   "files": [
     "LICENSE",
     "/x-test-cli.js",
-    "/x-test-cli-browser.js"
+    "/x-test-cli-browser.js",
+    "/x-test-cli-tap.js",
+    "/test",
+    "/demo"
   ],
-  "dependencies": {
-    "tap-parser": ">=18.0.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "puppeteer": ">=20.0.0",
     "playwright": ">=1.40.0"
