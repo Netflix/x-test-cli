@@ -16,9 +16,15 @@
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
+    "start": "node ./server.js",
     "lint": "eslint --max-warnings=0 .",
     "lint-fix": "eslint --fix .",
-    "test": "node --test test/*.test.js",
+    "ci:setup-playwright": "playwright install --with-deps chromium",
+    "test": "npm run test:node && npm run test:browser",
+    "test:node": "node --test test/*.test.js",
+    "test:browser": "npm run test:browser:puppeteer:chrome && npm run test:browser:playwright:chrome",
+    "test:browser:puppeteer:chrome": "node ./x-test-cli.js --client=puppeteer --url=http://127.0.0.1:8080/test/test.html --coverage=true",
+    "test:browser:playwright:chrome": "playwright install chromium && node ./x-test-cli.js --client=playwright --url=http://127.0.0.1:8080/test/test.html --coverage=true",
     "demo": "node demo/index.js",
     "demo:color": "node demo/color.js",
     "demo:tap": "node demo/tap.js",
@@ -32,10 +38,10 @@
     "/test",
     "/demo"
   ],
-  "dependencies": {},
   "peerDependencies": {
-    "puppeteer": ">=20.0.0",
-    "playwright": ">=1.40.0"
+    "@netflix/x-test": "^2.0.0-rc.6",
+    "playwright": ">=1.40.0",
+    "puppeteer": ">=20.0.0"
   },
   "peerDependenciesMeta": {
     "puppeteer": {
@@ -46,7 +52,10 @@
     }
   },
   "devDependencies": {
-    "eslint": "^9.20.1"
+    "@netflix/x-test": "^2.0.0-rc.6",
+    "eslint": "^9.20.1",
+    "playwright": "^1.59.1",
+    "puppeteer": "^24.42.0"
   },
   "engines": {
     "node": ">=20.18",

@@ -11,5 +11,8 @@ jobs:
           node-version: '20.18'
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
+      - run: npm run ci:setup-playwright
       - run: npm run lint
+      - run: npm start &
+      - run: sleep 2
       - run: npm test
