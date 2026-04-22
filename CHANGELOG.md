@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--timeout=<ms>` flag bounding the full run launch, navigate, handshake, and
+  coverage — defaults to 30s (#14).
+- Fail-fast on obviously-wrong URLs: the CLI now bails immediately when the
+  initial navigation returns a `>= 400` HTTP status (#14).
 - NPM token lives in a GH environment for publish action (more secure).
 
 ## [1.0.0-rc.3] - 2026-04-21

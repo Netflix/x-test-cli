@@ -23,30 +23,39 @@ export class XTestCliBrowserPuppeteer {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
       ...launchOptions,
     });
-    const page = await browser.newPage();
+    try {
+      const page = await browser.newPage();
 
-    if (coverage) {
-      if (!page.coverage) {
-        throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
+      if (coverage) {
+        if (!page.coverage) {
+          throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
+        }
+        await page.coverage.startJSCoverage();
       }
-      await page.coverage.startJSCoverage();
+
+      page.on('console', message => {
+        onConsole(message.text());
+      });
+
+      // Signal intent to content-negotiating servers so they can 4xx early
+      //  instead of serving a non-HTML variant. Static servers ignore this.
+      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
+
+      const response = await page.goto(url);
+      if (response && response.status() >= 400) {
+        throw new Error(`Got HTTP ${response.status()} for ${url}. Is the url correct?`);
+      }
+
+      const { coverageRequested } = await page.evaluate(XTestCliBrowserPuppeteer.#runScript());
+
+      if (coverage && coverageRequested) {
+        // Puppeteer already emits `{text, ranges}` — no normalization needed.
+        const js = await page.coverage.stopJSCoverage();
+        await page.evaluate(XTestCliBrowserPuppeteer.#coverScript(), { js });
+      }
+    } finally {
+      await browser.close();
     }
-
-    page.on('console', message => {
-      onConsole(message.text());
-    });
-
-    await page.goto(url);
-
-    const { coverageRequested } = await page.evaluate(XTestCliBrowserPuppeteer.#runScript());
-
-    if (coverage && coverageRequested) {
-      // Puppeteer already emits `{text, ranges}` — no normalization needed.
-      const js = await page.coverage.stopJSCoverage();
-      await page.evaluate(XTestCliBrowserPuppeteer.#coverScript(), { js });
-    }
-
-    await browser.close();
   }
 
   /**
@@ -133,30 +142,39 @@ export class XTestCliBrowserPlaywright {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
       ...launchOptions,
     });
-    const page = await browser.newPage();
+    try {
+      const page = await browser.newPage();
 
-    if (coverage) {
-      if (!page.coverage) {
-        throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
+      if (coverage) {
+        if (!page.coverage) {
+          throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
+        }
+        await page.coverage.startJSCoverage();
       }
-      await page.coverage.startJSCoverage();
+
+      page.on('console', message => {
+        onConsole(message.text());
+      });
+
+      // Signal intent to content-negotiating servers so they can 4xx early
+      //  instead of serving a non-HTML variant. Static servers ignore this.
+      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
+
+      const response = await page.goto(url);
+      if (response && response.status() >= 400) {
+        throw new Error(`Got HTTP ${response.status()} for ${url}. Is the url correct?`);
+      }
+
+      const { coverageRequested } = await page.evaluate(XTestCliBrowserPlaywright.#runScript());
+
+      if (coverage && coverageRequested) {
+        const raw = await page.coverage.stopJSCoverage();
+        const js = XTestCliBrowserPlaywright.normalizeCoverage(raw);
+        await page.evaluate(XTestCliBrowserPlaywright.#coverScript(), { js });
+      }
+    } finally {
+      await browser.close();
     }
-
-    page.on('console', message => {
-      onConsole(message.text());
-    });
-
-    await page.goto(url);
-
-    const { coverageRequested } = await page.evaluate(XTestCliBrowserPlaywright.#runScript());
-
-    if (coverage && coverageRequested) {
-      const raw = await page.coverage.stopJSCoverage();
-      const js = XTestCliBrowserPlaywright.normalizeCoverage(raw);
-      await page.evaluate(XTestCliBrowserPlaywright.#coverScript(), { js });
-    }
-
-    await browser.close();
   }
 
   /**

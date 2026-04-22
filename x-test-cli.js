@@ -6,7 +6,7 @@ import { XTestCliTap } from './x-test-cli-tap.js';
 const SUPPORTED_CLIENTS = ['puppeteer', 'playwright'];
 const SUPPORTED_REPORTERS = ['tap', 'auto'];
 
-const ALLOWED_ARGS = ['client', 'url', 'coverage', 'test-name', 'reporter'];
+const ALLOWED_ARGS = ['client', 'url', 'coverage', 'test-name', 'reporter', 'timeout'];
 const ALLOWED_ARGS_DEBUG = ALLOWED_ARGS.map(arg => `"--${arg}"`).join(', ');
 
 function fail(message) {
@@ -60,6 +60,17 @@ if (options.coverage === 'true') {
   fail(`Error: --coverage must be "true" or "false", got "${options.coverage}".`);
 }
 
+// Run timeout (ms). Bounds the handshake with the x-test root so a missing or
+//  broken root can’t hang the CLI forever. Default 30s.
+let runTimeout = 30_000;
+if (options.timeout !== undefined) {
+  const parsed = Number(options.timeout);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    fail(`Error: --timeout must be a positive number of milliseconds, got "${options.timeout}".`);
+  }
+  runTimeout = parsed;
+}
+
 const reporterMode = options.reporter ?? 'auto';
 if (!SUPPORTED_REPORTERS.includes(reporterMode)) {
   const supported = SUPPORTED_REPORTERS.map(reporter => `"${reporter}"`).join(', ');
@@ -99,17 +110,30 @@ const driverOptions = {
   onConsole: text => tap.write(text),
 };
 
+// Global run timeout. Races the driver against a timer — covers launch,
+//  navigation, handshake, and coverage uniformly. The losing promise keeps
+//  running, but we `process.exit(1)` below and the driver packages install
+//  exit handlers that tear down Chromium.
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Run the browser driver. On any catastrophic failure (browser launch,
 //  navigation, etc.) emit `Bail out!` through the reporter so it gets colorized
 //  and the scanner records the bailed state, then dump the error to stderr
 //  (outside the TAP stream) and exit 1.
+const timeoutMessage = `Timed out after ${runTimeout}ms waiting for x-test root at ${url}. Use --timeout=<ms> to extend.`;
 try {
   switch (options.client) {
     case 'puppeteer':
-      await XTestCliBrowserPuppeteer.run(driverOptions);
+      await withTimeout(XTestCliBrowserPuppeteer.run(driverOptions), runTimeout, timeoutMessage);
       break;
     case 'playwright':
-      await XTestCliBrowserPlaywright.run(driverOptions);
+      await withTimeout(XTestCliBrowserPlaywright.run(driverOptions), runTimeout, timeoutMessage);
       break;
   }
 } catch (error) {
