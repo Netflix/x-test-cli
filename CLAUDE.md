@@ -8,23 +8,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-The codebase consists of three main modules:
-
-- **x-test-cli.js**: Entry point that parses CLI arguments and dispatches to the appropriate client
-- **x-test-cli-puppeteer.js** (`XTestPuppeteerCli`): Puppeteer-specific implementation that launches browser, collects coverage, and validates TAP output
-- **x-test-cli-common.js** (`XTestCliCommon`): Browser-side functions injected via `page.evaluate()` that communicate with the test runner using BroadcastChannel API
+- **x-test-cli.js**: Entry point. Parses CLI args, loads `x-test.config.js`, constructs the TAP reporter, dispatches to a driver.
+- **x-test-cli-browser.js**: Driver classes — `XTestCliBrowserPuppeteer` and `XTestCliBrowserPlaywright`. Each `run()` launches a browser, navigates, awaits a caller-supplied `ended` Promise, collects V8 coverage, closes.
+- **x-test-cli-tap.js** (`XTestCliTap`): Line-by-line TAP parser + renderer. Auto-ends on the first terminal signal (top-level plan satisfied, or `Bail out!`) and fires the `endStream` callback.
+- **x-test-cli-coverage.js**: V8 → line hits + lcov writer + grading + TAP summary formatter.
+- **x-test-cli-config.js**: `x-test.config.js` loader and validator.
 
 ### Communication Flow
 
-1. CLI launches browser and navigates to test URL
-2. Browser-injected functions (`XTestCliCommon.run()` and `XTestCliCommon.cover()`) communicate with the test runner via BroadcastChannel named 'x-test'
-3. Test runner outputs TAP to console, which CLI captures and validates
-4. Coverage data flows: Browser → CLI → Back to browser for processing
+The entire interface between the CLI and `@netflix/x-test` runs over the browser console, plus one optional URL query param. No BroadcastChannel handshake; no scripts injected into the page.
+
+1. CLI launches browser, attaches `page.on('console', …)` before navigation.
+2. CLI navigates to the test URL (with optional `?x-test-name-pattern=<regex>`).
+3. x-test runs tests, writes TAP 14 to `console.log`.
+4. CLI's `onConsole(text)` forwards each line to `tap.write(text)`.
+5. `XTestCliTap` auto-ends on parsing a top-level `1..N` plan or `Bail out!`, firing `endStream`.
+6. Driver awakens from `await ended`, stops coverage, closes browser.
 
 ### URL Parameters
 
-- `x-test-name`: Test name filter (regex pattern), automatically added when `--test-name` CLI arg is provided
-- `x-test-run-coverage`: Flag to enable coverage mode, automatically added when `--coverage=true`
+- `x-test-name-pattern`: Test-name filter (regex), added when `--name-pattern` is provided.
 
 ## Development Commands
 
@@ -57,7 +60,7 @@ The bump script automatically updates `package.json`, `package-lock.json`, and `
 ## Code Conventions
 
 - ES modules (`"type": "module"` in package.json)
-- Kebab-case CLI args are converted to camelCase internally (e.g., `--test-name` → `testName`)
-- TAP output flows through stdout; errors through stderr
-- Exit code 1 on test failures or validation errors
+- Kebab-case CLI args are converted to camelCase internally (e.g., `--name-pattern` → `namePattern`)
+- TAP output flows through stdout; errors and notes through stderr
+- Exit codes: 0 = all pass (incl. coverage goals), 1 = test failure / coverage miss / bail / crash, 2 = invocation error (bad config, e.g. `--coverage=true` without `coverageTargets`)
 - All publishable files listed in `package.json` "files" array

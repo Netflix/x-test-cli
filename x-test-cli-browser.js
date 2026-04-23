@@ -1,16 +1,12 @@
 /**
- * Puppeteer driver. `run(options)` launches Chromium via puppeteer,
- * handshakes with x-test, forwards each browser console event through
- * `onConsole(text)`, and closes.
+ * Puppeteer driver. `run(options)` launches Chromium via puppeteer, wires each
+ * browser console line through `onConsole(text)`, awaits `ended` (the caller’s
+ * signal that the TAP stream has terminated — typically a Promise resolved by
+ * the TAP parser when it sees a top-level plan or `Bail out!`), surfaces V8
+ * coverage via `onCoverage(entries)`, and closes.
  */
 export class XTestCliBrowserPuppeteer {
-  static async run({ url, coverage, launchOptions, launchTimeout, onConsole }) {
-    if (coverage) {
-      const urlObj = new URL(url);
-      urlObj.searchParams.set('x-test-run-coverage', '');
-      url = urlObj.href;
-    }
-
+  static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
     let puppeteer;
     try {
       puppeteer = (await import('puppeteer')).default;
@@ -26,110 +22,43 @@ export class XTestCliBrowserPuppeteer {
     try {
       const page = await browser.newPage();
 
-      if (coverage) {
-        if (!page.coverage) {
-          throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
-        }
-        await page.coverage.startJSCoverage();
-      }
-
       page.on('console', message => {
         onConsole(message.text());
       });
 
-      // Signal intent to content-negotiating servers so they can 4xx early
-      //  instead of serving a non-HTML variant. Static servers ignore this.
-      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
+      if (coverage) {
+        await page.coverage.startJSCoverage();
+      }
 
+      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
       const response = await page.goto(url);
       if (response && response.status() >= 400) {
         throw new Error(`Got HTTP ${response.status()} for ${url}. Is the url correct?`);
       }
 
-      const { coverageRequested } = await page.evaluate(XTestCliBrowserPuppeteer.#runScript());
+      await ended;
 
-      if (coverage && coverageRequested) {
+      if (coverage) {
         // Puppeteer already emits `{text, ranges}` — no normalization needed.
         const js = await page.coverage.stopJSCoverage();
-        await page.evaluate(XTestCliBrowserPuppeteer.#coverScript(), { js });
+        onCoverage(js);
       }
     } finally {
       await browser.close();
     }
   }
-
-  /**
-   * Browser-injected factory: handshakes with x-test over BroadcastChannel
-   * and resolves once the run has ended (or coverage has been requested).
-   */
-  static #runScript() {
-    return async () => {
-      const channel = new BroadcastChannel('x-test');
-      return new Promise(resolve => {
-        const onMessage = evt => {
-          const { type, data } = evt.data;
-          let resolution = null;
-          switch (type) {
-            case 'x-test-root-coverage-request':
-              resolution = { coverageRequested: true, ended: false };
-              break;
-            case 'x-test-root-end':
-              resolution = { coverageRequested: false, ended: true };
-              break;
-            case 'x-test-root-pong':
-              if (data.waiting || data.ended) {
-                resolution = { coverageRequested: !!data.waiting, ended: !!data.ended };
-              }
-              break;
-          }
-          if (resolution) {
-            channel.removeEventListener('message', onMessage);
-            channel.close();
-            resolve(resolution);
-          }
-        };
-        channel.addEventListener('message', onMessage);
-        channel.postMessage({ type: 'x-test-client-ping' });
-      });
-    };
-  }
-
-  /**
-   * Browser-injected factory: posts coverage results back to the x-test root,
-   * resolves when it signals end-of-run.
-   */
-  static #coverScript() {
-    return async (data) => {
-      const channel = new BroadcastChannel('x-test');
-      return new Promise(resolve => {
-        const onMessage = evt => {
-          const { type } = evt.data;
-          if (type === 'x-test-root-end') {
-            channel.removeEventListener('message', onMessage);
-            channel.close();
-            resolve();
-          }
-        };
-        channel.addEventListener('message', onMessage);
-        channel.postMessage({ type: 'x-test-client-coverage-result', data });
-      });
-    };
-  }
 }
 
 /**
- * Playwright driver. `run(options)` launches Chromium via playwright,
- * handshakes with x-test, forwards each browser console event through
- * `onConsole(text)`, normalizes V8 coverage to Puppeteer's shape, and closes.
+ * Playwright driver. `run(options)` launches Chromium via playwright, wires
+ * each browser console line through `onConsole(text)`, awaits `ended` (the
+ * caller’s signal that the TAP stream has terminated — typically a Promise
+ * resolved by the TAP parser when it sees a top-level plan or `Bail out!`),
+ * normalizes V8 coverage into Puppeteer’s shape, surfaces it via
+ * `onCoverage(entries)`, and closes.
  */
 export class XTestCliBrowserPlaywright {
-  static async run({ url, coverage, launchOptions, launchTimeout, onConsole }) {
-    if (coverage) {
-      const urlObj = new URL(url);
-      urlObj.searchParams.set('x-test-run-coverage', '');
-      url = urlObj.href;
-    }
-
+  static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
     let playwright;
     try {
       playwright = await import('playwright');
@@ -145,32 +74,26 @@ export class XTestCliBrowserPlaywright {
     try {
       const page = await browser.newPage();
 
-      if (coverage) {
-        if (!page.coverage) {
-          throw new Error('Coverage was requested but `page.coverage` is unavailable in this browser.');
-        }
-        await page.coverage.startJSCoverage();
-      }
-
       page.on('console', message => {
         onConsole(message.text());
       });
 
-      // Signal intent to content-negotiating servers so they can 4xx early
-      //  instead of serving a non-HTML variant. Static servers ignore this.
-      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
+      if (coverage) {
+        await page.coverage.startJSCoverage();
+      }
 
+      await page.setExtraHTTPHeaders({ Accept: 'text/html' });
       const response = await page.goto(url);
       if (response && response.status() >= 400) {
         throw new Error(`Got HTTP ${response.status()} for ${url}. Is the url correct?`);
       }
 
-      const { coverageRequested } = await page.evaluate(XTestCliBrowserPlaywright.#runScript());
+      await ended;
 
-      if (coverage && coverageRequested) {
+      if (coverage) {
         const raw = await page.coverage.stopJSCoverage();
         const js = XTestCliBrowserPlaywright.normalizeCoverage(raw);
-        await page.evaluate(XTestCliBrowserPlaywright.#coverScript(), { js });
+        onCoverage(js);
       }
     } finally {
       await browser.close();
@@ -178,83 +101,81 @@ export class XTestCliBrowserPlaywright {
   }
 
   /**
-   * Reshape Playwright's raw V8 coverage (`{source, functions}`) into
-   * Puppeteer's `{text, ranges}` form so downstream x-test processing
-   * sees identical input regardless of client.
-   *
-   * NOTE: first-pass normalization — flattens ranges with count > 0
-   * without merging overlapping ranges or subtracting nested uncovered
-   * blocks. Follow-up will port Puppeteer's `convertToDisjointRanges`.
+   * Reshape Playwright’s raw V8 coverage (`{source, functions}`) into
+   * Puppeteer’s `{text, ranges}` form so downstream processing is
+   * driver-agnostic. Runs `convertToDisjointRanges` over the union of every
+   * function’s nested ranges so inner `count === 0` sub-blocks (e.g., unseen
+   * branches of an executed function) are subtracted from their outer
+   * `count > 0` parent. Without this step Playwright reports looser coverage
+   * than Puppeteer for the same run.
    */
   static normalizeCoverage(entries) {
     return entries.map(({ url, scriptId, source, functions }) => {
-      const ranges = [];
+      const nested = [];
       for (const fn of functions ?? []) {
-        for (const r of fn.ranges ?? []) {
-          if (r.count > 0) {
-            ranges.push({ start: r.startOffset, end: r.endOffset });
-          }
+        for (const range of fn.ranges ?? []) {
+          nested.push(range);
         }
       }
-      return { url, scriptId, text: source, ranges };
+      return { url, scriptId, text: source, ranges: XTestCliBrowserPlaywright.convertToDisjointRanges(nested) };
     });
   }
 
   /**
-   * Browser-injected factory: handshakes with x-test over BroadcastChannel
-   * and resolves once the run has ended (or coverage has been requested).
+   * Flatten V8’s nested range tree into the disjoint `{start, end}` spans
+   * Puppeteer returns directly. The algorithm is the same one Puppeteer uses
+   * internally: a sweep over range start / end events, maintaining a stack of
+   * currently-active ranges (outermost at bottom, innermost on top). Between
+   * events, the innermost range’s count wins — so an enclosing `count=1` scope
+   * is overridden by an `count=0` inner block for that block’s extent. We emit
+   * only non-zero segments and merge adjacent same-count segments on the fly.
    */
-  static #runScript() {
-    return async () => {
-      const channel = new BroadcastChannel('x-test');
-      return new Promise(resolve => {
-        const onMessage = evt => {
-          const { type, data } = evt.data;
-          let resolution = null;
-          switch (type) {
-            case 'x-test-root-coverage-request':
-              resolution = { coverageRequested: true, ended: false };
-              break;
-            case 'x-test-root-end':
-              resolution = { coverageRequested: false, ended: true };
-              break;
-            case 'x-test-root-pong':
-              if (data.waiting || data.ended) {
-                resolution = { coverageRequested: !!data.waiting, ended: !!data.ended };
-              }
-              break;
-          }
-          if (resolution) {
-            channel.removeEventListener('message', onMessage);
-            channel.close();
-            resolve(resolution);
-          }
-        };
-        channel.addEventListener('message', onMessage);
-        channel.postMessage({ type: 'x-test-client-ping' });
-      });
-    };
-  }
+  static convertToDisjointRanges(nested) {
+    const events = [];
+    for (const range of nested) {
+      events.push({ offset: range.startOffset, delta:  1, range });
+      events.push({ offset: range.endOffset,   delta: -1, range });
+    }
+    // Sort rules at equal offset:
+    //   - ends (delta=-1) fire before starts (delta=+1) so an ending range is
+    //     off the stack before a new one begins;
+    //   - among starts: wider ranges (outer) before narrower (inner), so the
+    //     inner lands on top of the stack;
+    //   - among ends: narrower ranges (inner) before wider (outer), so the
+    //     inner comes off first.
+    events.sort((a, b) => {
+      if (a.offset !== b.offset) { return a.offset - b.offset; }
+      if (a.delta  !== b.delta)  { return a.delta  - b.delta;  }
+      const lenA = a.range.endOffset - a.range.startOffset;
+      const lenB = b.range.endOffset - b.range.startOffset;
+      return a.delta === 1 ? lenB - lenA : lenA - lenB;
+    });
 
-  /**
-   * Browser-injected factory: posts coverage results back to the x-test root,
-   * resolves when it signals end-of-run.
-   */
-  static #coverScript() {
-    return async (data) => {
-      const channel = new BroadcastChannel('x-test');
-      return new Promise(resolve => {
-        const onMessage = evt => {
-          const { type } = evt.data;
-          if (type === 'x-test-root-end') {
-            channel.removeEventListener('message', onMessage);
-            channel.close();
-            resolve();
-          }
-        };
-        channel.addEventListener('message', onMessage);
-        channel.postMessage({ type: 'x-test-client-coverage-result', data });
-      });
-    };
+    const stack    = [];
+    const segments = [];
+    let lastOffset = 0;
+    for (const event of events) {
+      if (stack.length > 0 && event.offset > lastOffset) {
+        const count    = stack[stack.length - 1].count;
+        const previous = segments.length ? segments[segments.length - 1] : null;
+        if (previous && previous.end === lastOffset && previous.count === count) {
+          previous.end = event.offset;                // Merge adjacent same-count segments.
+        } else {
+          segments.push({ start: lastOffset, end: event.offset, count });
+        }
+      }
+      lastOffset = event.offset;
+      if (event.delta === 1) {
+        stack.push(event.range);
+      } else {
+        const index = stack.lastIndexOf(event.range);
+        if (index !== -1) {
+          stack.splice(index, 1);
+        }
+      }
+    }
+    return segments
+      .filter(segment => segment.count > 0)
+      .map(segment => ({ start: segment.start, end: segment.end }));
   }
 }
