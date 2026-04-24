@@ -1,7 +1,7 @@
 {
   "name": "@netflix/x-test-cli",
   "description": "a simple cli for x-test",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.5",
   "license": "Apache-2.0",
   "repository": "https://github.com/Netflix/x-test",
   "type": "module",

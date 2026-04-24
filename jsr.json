@@ -1,6 +1,6 @@
 {
   "name": "@netflix/x-test-cli",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.5",
   "exports": {
     "./x-test-cli.js": "/x-test-cli.js"
   }
