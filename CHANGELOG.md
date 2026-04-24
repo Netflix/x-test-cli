@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `--test-name` renamed to `--name-pattern` to match Node test CLI (#22).
+- `--coverage` is auto-disabled when `--name-pattern` is set; coverage
+  numbers from a filtered run would misgrade per-file goals (#22).
+
+### Added
+
+- `x-test.config.js` config file support (#22).
+- Support for `--coverage` from CLI (handled in the CLI, not in `x-test`) (#22).
+
 ## [1.0.0-rc.4] - 2026-04-22
 
 ### Added

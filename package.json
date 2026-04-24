@@ -21,10 +21,11 @@
     "lint-fix": "eslint --fix .",
     "ci:setup-playwright": "playwright install --with-deps chromium",
     "test": "npm run test:node && npm run test:browser",
-    "test:node": "node --test test/*.test.js",
-    "test:browser": "npm run test:browser:puppeteer:chrome && npm run test:browser:playwright:chrome",
-    "test:browser:puppeteer:chrome": "node ./x-test-cli.js --client=puppeteer --url=http://127.0.0.1:8080/test/test.html --coverage=true",
-    "test:browser:playwright:chrome": "playwright install chromium && node ./x-test-cli.js --client=playwright --url=http://127.0.0.1:8080/test/test.html --coverage=true",
+    "test:node": "node --test test/node/*.test.js",
+    "test:browser": "npm run test:browser:puppeteer:chrome && npm run test:browser:playwright:chrome && npm run test:browser:parity",
+    "test:browser:puppeteer:chrome": "node ./x-test-cli.js --client=puppeteer --url=http://127.0.0.1:8080/test/browser/ --coverage=true",
+    "test:browser:playwright:chrome": "playwright install chromium && node ./x-test-cli.js --client=playwright --url=http://127.0.0.1:8080/test/browser/ --coverage=true",
+    "test:browser:parity": "node ./test/node/parity.js",
     "demo": "node demo/index.js",
     "demo:color": "node demo/color.js",
     "demo:tap": "node demo/tap.js",
@@ -34,6 +35,8 @@
     "LICENSE",
     "/x-test-cli.js",
     "/x-test-cli-browser.js",
+    "/x-test-cli-config.js",
+    "/x-test-cli-coverage.js",
     "/x-test-cli-tap.js",
     "/test",
     "/demo"
@@ -58,7 +61,7 @@
     "puppeteer": "^24.42.0"
   },
   "engines": {
-    "node": ">=20.18",
+    "node": ">=22",
     "npm": ">=10.8"
   },
   "contributors": [
