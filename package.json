@@ -19,7 +19,7 @@
     "start": "node ./server.js",
     "lint": "eslint --max-warnings=0 .",
     "lint-fix": "eslint --fix .",
-    "ci:setup-playwright": "playwright install --with-deps chromium",
+    "ci:setup-playwright": "playwright install chromium",
     "test": "npm run test:node && npm run test:browser",
     "test:node": "node --test test/node/*.test.js",
     "test:browser": "npm run test:browser:puppeteer:chrome && npm run test:browser:playwright:chrome && npm run test:browser:parity",

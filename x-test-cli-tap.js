@@ -38,10 +38,12 @@ export class XTestCliTap {
   };
 
   // Failure-specific, whole-line TAP patterns, iterated in declaration order.
+  //  No catch-all sentinel: anything that isn’t a comment or blank falls
+  //  through to the main pattern set so a trailing plan / assert / bail still
+  //  terminates the stream and clears `inFailureBlock`.
   static #inFailurePatterns = {
     failureComment: new RegExp(XTestCliTap.#patterns.comment.source),
     failureBlank:   new RegExp(XTestCliTap.#patterns.blank.source),
-    failureUnknown: new RegExp(XTestCliTap.#patterns.unknown.source),
   };
 
   // Named ANSI styles to colorize / stylize stdout text.
@@ -195,15 +197,20 @@ export class XTestCliTap {
    * `failureUnknown`) so a hit is guaranteed.
    */
   #tryPatterns(line) {
-    const patterns = this.#state.inYaml
-      ? XTestCliTap.#inYamlPatterns
+    // In yaml mode the set is exhaustive (ends in a catch-all). In failure
+    //  mode we only match comments/blanks so that a trailing plan / assert /
+    //  bail falls through to the main set and still terminates the stream.
+    const sets = this.#state.inYaml
+      ? [XTestCliTap.#inYamlPatterns]
       : this.#state.inFailureBlock
-        ? XTestCliTap.#inFailurePatterns
-        : XTestCliTap.#patterns;
-    for (const pattern of Object.values(patterns)) {
-      const match = pattern.exec(line);
-      if (match) {
-        return { pattern, match };
+        ? [XTestCliTap.#inFailurePatterns, XTestCliTap.#patterns]
+        : [XTestCliTap.#patterns];
+    for (const patterns of sets) {
+      for (const pattern of Object.values(patterns)) {
+        const match = pattern.exec(line);
+        if (match) {
+          return { pattern, match };
+        }
       }
     }
     throw new Error('Invariant violated: every pattern set must end in a catch-all sentinel.');
@@ -301,11 +308,6 @@ export class XTestCliTap {
         style = XTestCliTap.#styles.red;
         break;
       case XTestCliTap.#inFailurePatterns.failureBlank:
-        style = XTestCliTap.#styles.red;
-        break;
-      case XTestCliTap.#inFailurePatterns.failureUnknown:
-        // Catch-all inside the failure block — everything reads as
-        //  failure commentary regardless of shape.
         style = XTestCliTap.#styles.red;
         break;
       case XTestCliTap.#patterns.comment:
