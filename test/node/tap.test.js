@@ -788,7 +788,7 @@ suite('failure re-iteration block', () => {
     assert(stripAnsi(out) === text);
   });
 
-  test('block is terminal — everything after # Failures: reads as failure commentary', () => {
+  test('a real TAP line inside the block exits failure mode', () => {
     const text = dedent`
       TAP version 14
       # Failures:
@@ -797,17 +797,17 @@ suite('failure re-iteration block', () => {
       ok 1 - a stray test line
       # ordinary comment
     `;
-    // Once entered, the block swallows subsequent lines — including
-    //  things that look like test asserts — as failure commentary (red).
-    //  x-test never emits test lines after `# Failures:`; this test
-    //  locks in the defensive behavior if anything ever does.
+    // Only comments / blanks are sticky-red inside the failure trailer. A
+    //  real assert / plan / bail falls through to the main pattern set,
+    //  clears `inFailureBlock`, and is classified normally — otherwise the
+    //  terminal plan would be swallowed and the stream would hang.
     const stylized = dedent`
       ${styles.dim}TAP version 14${styles.reset}
       ${styles.red}# Failures:${styles.reset}
       ${styles.red}# http://host/f.html${styles.reset}
       ${styles.red}# > leaf${styles.reset}
-      ${styles.red}ok 1 - a stray test line${styles.reset}
-      ${styles.red}# ordinary comment${styles.reset}
+      ${styles.green}ok 1 - a stray test line${styles.reset}
+      ${styles.dim}# ordinary comment${styles.reset}
     `;
     const stream = new PassThrough();
     const tap = new XTestCliTap({ stream, color: true });
@@ -815,6 +815,48 @@ suite('failure re-iteration block', () => {
     const out = stream.read().toString();
     assert(out === stylized);
     assert(stripAnsi(out) === text);
+  });
+
+  test('terminal plan after # Failures: fires endStream (regression: hang on failure)', () => {
+    // Regression: `# Failures:` used to switch the parser to a pattern set
+    //  with a catch-all sentinel, so the trailing `1..N` was consumed as
+    //  failure commentary and `endStream` never fired — the CLI would hang
+    //  to the global timeout on any test run that had failures.
+    let ended = 0;
+    const tap = new XTestCliTap({
+      stream: new PassThrough(),
+      color:  false,
+      endStream: () => { ended++; },
+    });
+    tap.write(dedent`
+      TAP version 14
+      not ok 1 - broken
+      # Failures:
+      # http://host/f.html
+      # > leaf
+      1..1
+    `);
+    assert(ended === 1);
+    assert(tap.result.ok === false);
+    assert(tap.result.testNotOk === 1);
+    assert(tap.result.planEnd === 1);
+  });
+
+  test('terminal Bail out! after # Failures: fires endStream', () => {
+    let ended = 0;
+    const tap = new XTestCliTap({
+      stream: new PassThrough(),
+      color:  false,
+      endStream: () => { ended++; },
+    });
+    tap.write(dedent`
+      TAP version 14
+      # Failures:
+      # http://host/f.html
+      Bail out! cannot continue
+    `);
+    assert(ended === 1);
+    assert(tap.result.bailed === true);
   });
 
   test('summary `#` lines BEFORE the block stay dim', () => {
