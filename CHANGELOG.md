@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Config key `coverageBasePath` renamed to `root`. Stricter validation: must
+  be a `./`- or `../`-prefixed string (#22).
+- Config key `coverageTargets` renamed to `coverageGoals`. Each key is now
+  also required to be `./`- or `../`-prefixed (#22).
+
+### Added
+
+- `--root=<path>` CLI flag. Mirrors the config key for ad-hoc overrides
+  (e.g. `--root=./build` to point at a vite-built dist without editing
+  config). Validated unconditionally (#22).
+
 ## [1.0.0-rc.5] - 2026-04-23
 
 ### Changed

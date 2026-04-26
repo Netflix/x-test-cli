@@ -38,7 +38,7 @@ suite('XTestCliConfig.load', () => {
         url: 'http://host/',
         client: 'playwright',
         coverage: true,
-        coverageTargets: {
+        coverageGoals: {
           './src/a.js': { lines: 90 },
         },
       };
@@ -47,7 +47,7 @@ suite('XTestCliConfig.load', () => {
     assert(cfg.url === 'http://host/');
     assert(cfg.client === 'playwright');
     assert(cfg.coverage === true);
-    assert.deepEqual(cfg.coverageTargets, { './src/a.js': { lines: 90 } });
+    assert.deepEqual(cfg.coverageGoals, { './src/a.js': { lines: 90 } });
   });
 
   test('syntax error propagates', async () => {
@@ -62,34 +62,41 @@ suite('XTestCliConfig.load', () => {
   });
 });
 
-suite('XTestCliConfig.validateCoverageBasePath', () => {
+suite('XTestCliConfig.validateRoot', () => {
   test('undefined is a no-op', () => {
-    XTestCliConfig.validateCoverageBasePath(undefined);
+    XTestCliConfig.validateRoot(undefined);
   });
 
-  test('valid string passes', () => {
-    XTestCliConfig.validateCoverageBasePath('./public');
-    XTestCliConfig.validateCoverageBasePath('/abs/path');
+  test('relative-prefixed strings pass', () => {
+    XTestCliConfig.validateRoot('./public');
+    XTestCliConfig.validateRoot('../sibling/dist');
   });
 
   test('empty string rejected', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageBasePath(''), /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateRoot(''), /non-empty string/);
+  });
+
+  test('absolute and bare paths rejected', () => {
+    // Bare ("public") and absolute ("/abs/path") forms are rejected so output
+    //  formatting stays uniform with `coverageGoals` keys (Node-style `./`).
+    assert.throws(() => XTestCliConfig.validateRoot('/abs/path'), /relative path/);
+    assert.throws(() => XTestCliConfig.validateRoot('public'),    /relative path/);
   });
 
   test('non-string rejected', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageBasePath(42),    /non-empty string/);
-    assert.throws(() => XTestCliConfig.validateCoverageBasePath(null),  /non-empty string/);
-    assert.throws(() => XTestCliConfig.validateCoverageBasePath({}),    /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateRoot(42),    /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateRoot(null),  /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateRoot({}),    /non-empty string/);
   });
 });
 
-suite('XTestCliConfig.validateCoverageTargets', () => {
+suite('XTestCliConfig.validateCoverageGoals', () => {
   test('undefined is a no-op', () => {
-    XTestCliConfig.validateCoverageTargets(undefined);
+    XTestCliConfig.validateCoverageGoals(undefined);
   });
 
   test('valid { lines: N } passes', () => {
-    XTestCliConfig.validateCoverageTargets({
+    XTestCliConfig.validateCoverageGoals({
       './src/a.js': { lines: 100 },
       './src/b.js': { lines: 0 },
       './src/c.js': { lines: 50.5 },
@@ -97,54 +104,69 @@ suite('XTestCliConfig.validateCoverageTargets', () => {
   });
 
   test('non-object root → throws', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageTargets('nope'), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageTargets([]), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageTargets(null), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateCoverageGoals('nope'), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateCoverageGoals([]), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateCoverageGoals(null), /must be an object/);
   });
 
   test('non-object entry → throws', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageTargets({ './a.js': 100 }), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageTargets({ './a.js': null }), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateCoverageGoals({ './a.js': 100 }), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateCoverageGoals({ './a.js': null }), /must be an object/);
   });
 
   test('branches/functions/statements → not yet supported', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { branches: 50 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { branches: 50 } }),
       /'branches' not yet supported/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { functions: 90 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { functions: 90 } }),
       /'functions' not yet supported/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { statements: 80 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { statements: 80 } }),
       /'statements' not yet supported/,
     );
   });
 
   test('unknown axis → throws with "unknown axis"', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { nonsense: 50 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { nonsense: 50 } }),
       /unknown axis/,
     );
   });
 
   test('lines out of range → throws', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { lines: 150 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: 150 } }),
       /must be a number in \[0, 100\]/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { lines: -1 } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: -1 } }),
       /must be a number in \[0, 100\]/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': { lines: 'high' } }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: 'high' } }),
       /must be a number/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageTargets({ './a.js': {} }),
+      () => XTestCliConfig.validateCoverageGoals({ './a.js': {} }),
       /must be a number/,
     );
+  });
+
+  test('keys must be `./`- or `../`-prefixed', () => {
+    // Bare (`a.js`) and absolute (`/a.js`) keys are rejected so the coverage
+    //  table renders Node-style relative paths uniformly with `root`.
+    assert.throws(
+      () => XTestCliConfig.validateCoverageGoals({ 'a.js': { lines: 50 } }),
+      /relative path/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCoverageGoals({ '/a.js': { lines: 50 } }),
+      /relative path/,
+    );
+    XTestCliConfig.validateCoverageGoals({ './a.js':  { lines: 50 } });
+    XTestCliConfig.validateCoverageGoals({ '../b.js': { lines: 50 } });
   });
 });

@@ -126,13 +126,13 @@ suite('XTestCliCoverage.computeLineHits — pragmas', () => {
 suite('XTestCliCoverage.gradeCoverage', () => {
   const origin = 'http://host';
 
-  test('all targets met → ok: true', () => {
+  test('all goals met → ok: true', () => {
     const text = 'a;\nb;\nc;';
     const entries = [entry('http://host/src/a.js', text, all(text))];
     const result = XTestCliCoverage.gradeCoverage({
       entries,
       origin,
-      targets: { './src/a.js': { lines: 100 } },
+      goals:   { './src/a.js': { lines: 100 } },
     });
     assert(result.ok === true);
     assert(result.rows.length === 1);
@@ -148,18 +148,18 @@ suite('XTestCliCoverage.gradeCoverage', () => {
     const result = XTestCliCoverage.gradeCoverage({
       entries,
       origin,
-      targets: { './src/a.js': { lines: 100 } },
+      goals:   { './src/a.js': { lines: 100 } },
     });
     assert(result.ok === false);
     assert(result.rows[0].lines.met === false);
     assert(result.rows[0].lines.percent === 50);
   });
 
-  test('missing target file → row flagged missing, not met', () => {
+  test('missing goal file → row flagged missing, not met', () => {
     const result = XTestCliCoverage.gradeCoverage({
       entries: [],
       origin,
-      targets: { './src/missing.js': { lines: 80 } },
+      goals:   { './src/missing.js': { lines: 80 } },
     });
     assert(result.ok === false);
     assert(result.rows[0].lines.missing === true);
@@ -174,7 +174,7 @@ suite('XTestCliCoverage.gradeCoverage', () => {
     const result = XTestCliCoverage.gradeCoverage({
       entries,
       origin,
-      targets: { './src/a.js': { lines: 30 } },
+      goals:   { './src/a.js': { lines: 30 } },
     });
     assert(result.rows[0].lines.percent === 33.33);
     assert(result.rows[0].lines.met === true);
@@ -253,12 +253,12 @@ suite('XTestCliCoverage.synthesizeMissingEntries', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test('returns synthetic entries for targets on disk but not in entries', async () => {
+  test('returns synthetic entries for goals on disk but not in entries', async () => {
     const synthetic = await XTestCliCoverage.synthesizeMissingEntries({
       entries: [],
       origin: 'http://host',
       sourceRoot: dir,
-      targets: { './src/onDisk.js': { lines: 80 } },
+      goals:   { './src/onDisk.js': { lines: 80 } },
     });
     assert(synthetic.length === 1);
     assert(synthetic[0].url === 'http://host/src/onDisk.js');
@@ -266,7 +266,7 @@ suite('XTestCliCoverage.synthesizeMissingEntries', () => {
     assert(synthetic[0].text === 'const a = 1;\nconst b = 2;');
   });
 
-  test('skips targets already present in entries', async () => {
+  test('skips goals already present in entries', async () => {
     const existing = {
       url: 'http://host/src/onDisk.js',
       text: 'const a = 1;',
@@ -276,17 +276,17 @@ suite('XTestCliCoverage.synthesizeMissingEntries', () => {
       entries: [existing],
       origin: 'http://host',
       sourceRoot: dir,
-      targets: { './src/onDisk.js': { lines: 80 } },
+      goals:   { './src/onDisk.js': { lines: 80 } },
     });
     assert(synthetic.length === 0);
   });
 
-  test('silently skips targets that are not on disk either', async () => {
+  test('silently skips goals that are not on disk either', async () => {
     const synthetic = await XTestCliCoverage.synthesizeMissingEntries({
       entries: [],
       origin: 'http://host',
       sourceRoot: dir,
-      targets: { './src/does-not-exist.js': { lines: 80 } },
+      goals:   { './src/does-not-exist.js': { lines: 80 } },
     });
     assert(synthetic.length === 0);
   });
@@ -296,12 +296,12 @@ suite('XTestCliCoverage.synthesizeMissingEntries', () => {
       entries: [],
       origin: 'http://host',
       sourceRoot: dir,
-      targets: { './src/onDisk.js': { lines: 80 } },
+      goals:   { './src/onDisk.js': { lines: 80 } },
     });
     const graded = XTestCliCoverage.gradeCoverage({
       entries: synthetic,
       origin: 'http://host',
-      targets: { './src/onDisk.js': { lines: 80 } },
+      goals:   { './src/onDisk.js': { lines: 80 } },
     });
     assert(graded.ok === false);
     assert(graded.rows[0].lines.missing === false);
@@ -369,14 +369,14 @@ suite('XTestCliCoverage.writeLcov', () => {
     `);
   });
 
-  test('targets filter restricts lcov to configured files only', async () => {
+  test('goals filter restricts lcov to configured files only', async () => {
     const targeted   = entry('http://host/src/app.js',  'x;', all('x;'));
     const untargeted = entry('http://host/test/t.html', 'y;', all('y;'));
     const written = await XTestCliCoverage.writeLcov({
       entries: [targeted, untargeted],
       outDir:  dir,
       origin:  'http://host',
-      targets: { './src/app.js': { lines: 50 } },
+      goals:   { './src/app.js': { lines: 50 } },
     });
     const body = await readFile(written, 'utf8');
     assert(body.includes('SF:http://host/src/app.js\n'));
@@ -393,7 +393,7 @@ suite('XTestCliCoverage.writeLcov', () => {
       entries: [first, second],
       outDir:  dir,
       origin:  'http://host',
-      targets: { './x.js': { lines: 100 } },
+      goals:   { './x.js': { lines: 100 } },
     });
     const body = await readFile(written, 'utf8');
     const records = body.split('end_of_record').filter(s => s.trim() !== '');

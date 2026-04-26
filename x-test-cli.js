@@ -13,7 +13,7 @@ const SUPPORTED_REPORTERS = ['tap', 'auto'];
 
 // Value-taking flags (always `--key=value`). `--help` and `--version` are
 //  handled as bare flags in the early-exit block below, so they’re not here.
-const ALLOWED_ARGS = ['client', 'url', 'coverage', 'name-pattern', 'reporter', 'timeout'];
+const ALLOWED_ARGS = ['client', 'url', 'root', 'coverage', 'name-pattern', 'reporter', 'timeout'];
 const ALLOWED_ARGS_DEBUG = ALLOWED_ARGS.map(arg => `"--${arg}"`).join(', ');
 
 const HELP = `\
@@ -40,6 +40,11 @@ x-test — run TAP-compliant browser tests from the command line
                                 not met. See “COVERAGE” below. Default: false.
                                 Only supported with chromium-based clients.
 
+    --root <path>               Resource root of the URL origin — the directory the
+                                dev server serves at “/”. Used to resolve
+                                “coverageGoals” keys on disk. Must be “./”- or
+                                “../”-prefixed (e.g. --root=./build). Default: cwd.
+
     --name-pattern <regex>      Regex pattern to filter tests by name. Tests whose
                                 full path (file > describe > … > it) does not
                                 match are skipped.
@@ -56,19 +61,23 @@ x-test — run TAP-compliant browser tests from the command line
 
   CONFIG FILE
     If ./x-test.config.js exists in the current working directory, it is loaded
-    automatically. CLI flags override config values. Coverage file paths are
-    resolved relative to url origin.
+    automatically. CLI flags override config values.
+
+    The “root” arg is the resource root of the URL origin — the directory the dev
+    server serves at “/”. “coverageGoals” keys are paths inside that root, so
+    they’re simultaneously root-relative on disk and origin-relative as URLs
+    (the dev server mirrors the two). Both must be “./”- or “../”-prefixed.
 
       export default {
         url:      'http://127.0.0.1:8080/test/',
+        root:     './src',
         client:   'playwright',
         browser:  'chromium',
         timeout:  30_000,
         coverage: true,
-        coverageBasePath: './public',
-        coverageTargets: {
-          './browser/x-test.js':           { lines: 100 },
-          './browser/x-test-root.js':      { lines: 71 },
+        coverageGoals: {
+          './elements/emoji-picker.js':      { lines: 100 },
+          './elements/subscribe-button.js':  { lines:  71 },
         },
       };
 
@@ -98,7 +107,7 @@ x-test — run TAP-compliant browser tests from the command line
     initiate tests via “x-test-cli”. The “--name-pattern” CLI argument
     maps to a browser-side “?x-test-name-pattern” search param on the
     resulting test page.
- 
+
   EXAMPLES
     # Run with defaults from x-test.config.js
     x-test
@@ -124,7 +133,7 @@ x-test — run TAP-compliant browser tests from the command line
 // Exit code 2 is reserved for invocation errors where the request itself is
 //  malformed — distinct from a passing-but-not-ok run (1) or a successful
 //  run (0). Only one path claims it this increment: `--coverage` without
-//  `coverageTargets`. Other invocation errors still use 1 until a later
+//  `coverageGoals`. Other invocation errors still use 1 until a later
 //  increment restructures the exit-code surface.
 function fail(message, code = 1) {
   console.error(message); // eslint-disable-line no-console
@@ -201,16 +210,24 @@ if (options.coverage === true || options.coverage === 'true') {
   fail(`Error: --coverage must be "true" or "false", got "${options.coverage}".`);
 }
 
-// Coverage requires goals. Without `coverageTargets` there is nothing to
+// The `root` argument is validated unconditionally — bare/absolute paths are
+//  config-shape errors regardless of whether coverage is on. The 
+//  `coverageGoals` config only matters with coverage, so it stays gated.
+try {
+  XTestCliConfig.validateRoot(options.root);
+} catch (error) {
+  fail(`Error: ${error.message}`, 2);
+}
+
+// Coverage requires goals. Without `coverageGoals` there is nothing to
 //  grade against — treat as an invocation error so misconfiguration fails
 //  loud instead of silently reporting “all ok”.
-if (coverage && !options.coverageTargets) {
-  fail('Error: --coverage=true requires coverageTargets in x-test.config.js.', 2);
+if (coverage && !options.coverageGoals) {
+  fail('Error: --coverage=true requires coverageGoals in x-test.config.js.', 2);
 }
 if (coverage) {
   try {
-    XTestCliConfig.validateCoverageBasePath(options.coverageBasePath);
-    XTestCliConfig.validateCoverageTargets(options.coverageTargets);
+    XTestCliConfig.validateCoverageGoals(options.coverageGoals);
   } catch (error) {
     fail(`Error: ${error.message}`, 2);
   }
@@ -321,35 +338,36 @@ let coverageOk = true;
 if (coverage && rawCoverageEntries) {
   try {
     const origin = new URL(url).origin;
-    // `coverageBasePath` (config) is the disk directory the web server serves
-    //  as its root — the directory target paths resolve against. Defaults to
-    //  cwd. Set this when the server root isn’t cwd (e.g. serving `./public`
-    //  or `./dist`), otherwise synthesis-from-disk and lcov `SF:` will point
-    //  at the wrong files.
-    const sourceRoot = options.coverageBasePath
-      ? resolve(process.cwd(), options.coverageBasePath)
+    // The `root` (config) is the disk directory the dev server serves as its
+    //  root — the directory goal paths resolve against. Defaults to cwd.
+    //  Set this when the server root isn’t cwd (e.g. serving `./src` or
+    //  `./dist`), otherwise synthesis-from-disk and lcov `SF:` will point at
+    //  the wrong files.
+    const sourceRoot = options.root
+      ? resolve(process.cwd(), options.root)
       : process.cwd();
-    // Synthesize entries for targets the browser never loaded but that exist
-    //  on disk — so the summary shows `0.0 / goal  not ok` for a real denominator
-    //  and lcov shows the file as all-red, rather than a terse “missing” notation.
+    // Synthesize entries for goal files the browser never loaded but that
+    //  exist on disk — so the summary shows `0.0 / goal  not ok` with a real
+    //  denominator and lcov shows the file all-red, rather than a terse
+    //  “missing” notation.
     const synthetic = await XTestCliCoverage.synthesizeMissingEntries({
       entries: rawCoverageEntries,
       origin,
       sourceRoot,
-      targets: options.coverageTargets,
+      goals:   options.coverageGoals,
     });
     const allEntries = [...rawCoverageEntries, ...synthetic];
     const lcovAbsolute = await XTestCliCoverage.writeLcov({
       entries: allEntries,
       outDir:  './coverage',
-      origin,                           // In-origin entries map to on-disk paths.
+      origin,                          // In-origin entries map to on-disk paths.
       sourceRoot,
-      targets: options.coverageTargets, // Only targeted files appear in lcov.
+      goals:   options.coverageGoals,  // Only goal files appear in lcov.
     });
     const graded = XTestCliCoverage.gradeCoverage({
       entries: allEntries,
       origin,
-      targets: options.coverageTargets,
+      goals:   options.coverageGoals,
     });
     coverageOk = graded.ok;
     tap.writeCoverage(XTestCliCoverage.formatCoverageBlock({ result: graded, lcovPath: displayPath(lcovAbsolute) }));
