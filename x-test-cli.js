@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 import { XTestCliBrowserPuppeteer, XTestCliBrowserPlaywright } from './x-test-cli-browser.js';
 import { XTestCliTap } from './x-test-cli-tap.js';
 import { XTestCliConfig } from './x-test-cli-config.js';
 import { XTestCliCoverage } from './x-test-cli-coverage.js';
+
+const cwd = process.cwd();
 
 const SUPPORTED_CLIENTS = ['puppeteer', 'playwright'];
 const SUPPORTED_REPORTERS = ['tap', 'auto'];
@@ -182,7 +184,7 @@ for (const arg of args) {
 //  flags override config values via the spread order below.
 let configOptions;
 try {
-  configOptions = await XTestCliConfig.load(process.cwd());
+  configOptions = await XTestCliConfig.load(cwd);
 } catch (error) {
   fail(`Error: failed to load x-test.config.js: ${error.message}`);
 }
@@ -210,14 +212,19 @@ if (options.coverage === true || options.coverage === 'true') {
   fail(`Error: --coverage must be "true" or "false", got "${options.coverage}".`);
 }
 
-// The `root` argument is validated unconditionally — bare/absolute paths are
-//  config-shape errors regardless of whether coverage is on. The 
-//  `coverageGoals` config only matters with coverage, so it stays gated.
+// The `root` argument is validated unconditionally — bare / absolute paths are
+//  config-shape errors regardless of coverage flag. The `coverageGoals` config
+//  only matters with coverage, so it stays gated.
 try {
   XTestCliConfig.validateRoot(options.root);
 } catch (error) {
   fail(`Error: ${error.message}`, 2);
 }
+
+// Declare fully-qualified base url and source root for output mappings. All
+//  three carry trailing `/` per `XTestCliTap`'s constructor contract.
+const baseUrl    = new URL(options.url).origin + '/';
+const sourceRoot = resolve(cwd, options.root ?? '.') + '/';
 
 // Coverage requires goals. Without `coverageGoals` there is nothing to
 //  grade against — treat as an invocation error so misconfiguration fails
@@ -273,7 +280,7 @@ const color         = !suppressColor && !!forceColor;
 //  satisfied, or `Bail out!`); we bridge that to the driver via `streamEnded`,
 //  so the driver knows when to stop collecting coverage and close the browser.
 const { promise: streamEnded, resolve: endStream } = Promise.withResolvers();
-const tap = new XTestCliTap({ stream: process.stdout, color, endStream });
+const tap = new XTestCliTap({ stream: process.stdout, color, endStream, baseUrl, sourceRoot, cwd: cwd + '/' });
 
 // Resolve the target URL. Apply the name-pattern filter if present.
 let url = options.url;
@@ -334,18 +341,13 @@ try {
 //  stream so the block lands inside the captured TAP output. x-test’s own
 //  in-browser coverage diagnostic still prints in parallel this increment; a
 //  later increment removes that path.
+// Skip coverage entirely when tests failed — the run is already not-ok and
+//  layering coverage on top is noise. Coverage is a secondary signal that
+//  only matters once the primary one (test pass/fail) is green.
 let coverageOk = true;
-if (coverage && rawCoverageEntries) {
+if (coverage && rawCoverageEntries && tap.result.ok) {
   try {
     const origin = new URL(url).origin;
-    // The `root` (config) is the disk directory the dev server serves as its
-    //  root — the directory goal paths resolve against. Defaults to cwd.
-    //  Set this when the server root isn’t cwd (e.g. serving `./src` or
-    //  `./dist`), otherwise synthesis-from-disk and lcov `SF:` will point at
-    //  the wrong files.
-    const sourceRoot = options.root
-      ? resolve(process.cwd(), options.root)
-      : process.cwd();
     // Synthesize entries for goal files the browser never loaded but that
     //  exist on disk — so the summary shows `0.0 / goal  not ok` with a real
     //  denominator and lcov shows the file all-red, rather than a terse
@@ -357,7 +359,7 @@ if (coverage && rawCoverageEntries) {
       goals:   options.coverageGoals,
     });
     const allEntries = [...rawCoverageEntries, ...synthetic];
-    const lcovAbsolute = await XTestCliCoverage.writeLcov({
+    await XTestCliCoverage.writeLcov({
       entries: allEntries,
       outDir:  './coverage',
       origin,                          // In-origin entries map to on-disk paths.
@@ -370,7 +372,7 @@ if (coverage && rawCoverageEntries) {
       goals:   options.coverageGoals,
     });
     coverageOk = graded.ok;
-    tap.writeCoverage(XTestCliCoverage.formatCoverageBlock({ result: graded, lcovPath: displayPath(lcovAbsolute) }));
+    tap.writeCoverage(XTestCliCoverage.formatCoverageBlock({ result: graded }), { ok: graded.ok });
   } catch (error) {
     tap.write('Bail out! Coverage processing failed.');
     console.error(error); // eslint-disable-line no-console
@@ -380,15 +382,4 @@ if (coverage && rawCoverageEntries) {
 
 if (!tap.result.ok || !coverageOk) {
   process.exit(1);
-}
-
-// Render absolute paths that live under cwd as `./rel/path`; fall back to
-//  the absolute form when the target escapes cwd (so users always see a
-//  path they can open from wherever they invoked the CLI).
-function displayPath(absolute) {
-  const rel = relative(process.cwd(), absolute);
-  if (rel === '' || rel.startsWith('..')) {
-    return absolute;
-  }
-  return './' + rel;
 }

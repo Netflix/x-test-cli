@@ -182,7 +182,7 @@ suite('XTestCliCoverage.gradeCoverage', () => {
 });
 
 suite('XTestCliCoverage.formatCoverageBlock', () => {
-  test('full shape: header, blank, rows, blank, trailer', () => {
+  test('full shape: header, blank, rows', () => {
     const result = {
       ok: false,
       rows: [
@@ -194,12 +194,8 @@ suite('XTestCliCoverage.formatCoverageBlock', () => {
       # Coverage:
       #
       # not ok - 65%  line coverage goal (got 60.61%) | ./src/reporter.js
-      # ok     - 100% line coverage goal (got 100%)   | ./src/x-test.js
-      #
-      # (see ./coverage/lcov.info)`;
-    assert(
-      XTestCliCoverage.formatCoverageBlock({ result, lcovPath: './coverage/lcov.info' }) === expected,
-    );
+      # ok     - 100% line coverage goal (got 100%)   | ./src/x-test.js`;
+    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
   });
 
   test('missing row uses "(missing)" where (got N%) would go', () => {
@@ -212,10 +208,8 @@ suite('XTestCliCoverage.formatCoverageBlock', () => {
     const expected = dedent`
       # Coverage:
       #
-      # not ok - 80% line coverage goal (missing) | ./src/missing.js
-      #
-      # (see x)`;
-    assert(XTestCliCoverage.formatCoverageBlock({ result, lcovPath: 'x' }) === expected);
+      # not ok - 80% line coverage goal (missing) | ./src/missing.js`;
+    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
   });
 
   test('percent trims trailing zeros but keeps two-decimal precision', () => {
@@ -233,10 +227,8 @@ suite('XTestCliCoverage.formatCoverageBlock', () => {
       #
       # ok - 50%  line coverage goal (got 60.6%)  | a
       # ok - 50%  line coverage goal (got 60.63%) | b
-      # ok - 100% line coverage goal (got 100%)   | c
-      #
-      # (see x)`;
-    assert(XTestCliCoverage.formatCoverageBlock({ result, lcovPath: 'x' }) === expected);
+      # ok - 100% line coverage goal (got 100%)   | c`;
+    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
   });
 });
 

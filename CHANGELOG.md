@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `# Failures:` block is now synthesized by the CLI from the streamed TAP
+  rather than re-iterated by the in-browser test runner. Stack-trace URLs
+  are rewritten to bare cwd-relative paths so modern terminals can just resolve
+  them as local files (#22).
 - `--root=<path>` CLI flag. Mirrors the config key for ad-hoc overrides
   (e.g. `--root=./build` to point at a vite-built dist without editing
   config). Validated unconditionally (#22).

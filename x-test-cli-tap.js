@@ -2,48 +2,34 @@
  * Single authority for TAP interpretation, result accumulation, and rendering.
  */
 export class XTestCliTap {
-  // Whole-line TAP patterns, iterated in declaration order.
+  // Whole-line TAP patterns, iterated in declaration order. `subtest` and
+  //  `testNotOk` carry named captures (name / description) that failure
+  //  synthesis reads from the dispatch match — same precedent as `plan`
+  //  and `bail` already use for their groups.
   static #patterns = {
     yamlOpen:       /^\s*---\s*$/,
     bail:           /^\s*Bail out!(?:\s+(?<reason>.*?))?\s*$/,
-    subtest:        /^\s*# Subtest:.*$/,
-    failuresHeader: /^\s*# Failures:\s*$/,
+    subtest:        /^\s*# Subtest:\s*(?<name>.*?)\s*$/,
     version:        /^\s*TAP [Vv]ersion\b.*$/,
     plan:           /^\s*(?<start>\d+)\.\.(?<end>\d+)(?:\s+#.*)?$/,
     testSkip:       /^\s*ok\b.*#\s*SKIP\b.*$/,
     testTodoOk:     /^\s*ok\b.*#\s*TODO\b.*$/,
     testTodoNotOk:  /^\s*not ok\b.*#\s*TODO\b.*$/,
     testOk:         /^\s*ok\b.*$/,
-    testNotOk:      /^\s*not ok\b.*$/,
+    testNotOk:      /^\s*not ok\b(?:\s+\d+)?\s*(?:-\s*)?(?<description>.*?)\s*$/,
     comment:        /^\s*#.*$/,
     blank:          /^\s*$/,
     unknown:        /^/,
   };
 
-  // Coverage-block patterns, used only by `writeCoverage`. The CLI writes its
-  //  coverage diagnostic through a dedicated path so the styling applies
-  //  regardless of whether the TAP stream has already ended.
-  static #coveragePatterns = {
-    coverageHeader:   /^\s*# Coverage:\s*$/,
-    coverageRowOk:    /^\s*#\s+ok\s+-\s+\d+%\s+line coverage goal\b.*\|.*$/,
-    coverageRowNotOk: /^\s*#\s+not ok\s+-\s+\d+%\s+line coverage goal\b.*\|.*$/,
-    coverageReport:   /^\s*#\s+\(see\b.*\)\s*$/,
-    coverageBlank:    /^\s*#\s*$/,
-  };
-
   // YAML-specific, whole-line TAP patterns, iterated in declaration order.
+  //  `yamlStackKey` matches the `stack: |-` block-scalar header inside a
+  //  diagnostic; capture is the key's indent (synthesis uses it as the
+  //  strip column for the lines beneath).
   static #inYamlPatterns = {
-    yamlClose:   /^\s*\.\.\.\s*$/,
-    yamlUnknown: new RegExp(XTestCliTap.#patterns.unknown.source),
-  };
-
-  // Failure-specific, whole-line TAP patterns, iterated in declaration order.
-  //  No catch-all sentinel: anything that isn’t a comment or blank falls
-  //  through to the main pattern set so a trailing plan / assert / bail still
-  //  terminates the stream and clears `inFailureBlock`.
-  static #inFailurePatterns = {
-    failureComment: new RegExp(XTestCliTap.#patterns.comment.source),
-    failureBlank:   new RegExp(XTestCliTap.#patterns.blank.source),
+    yamlClose:    /^\s*\.\.\.\s*$/,
+    yamlStackKey: /^(?<indent>\s*)stack:\s*\|-?\s*$/,
+    yamlUnknown:  new RegExp(XTestCliTap.#patterns.unknown.source),
   };
 
   // Named ANSI styles to colorize / stylize stdout text.
@@ -61,10 +47,18 @@ export class XTestCliTap {
   #stream;
   #color;
   #endStream;
+  // All three carry a trailing `/` — caller's contract. `#rewriteUrl` chains
+  //  substring substitutions and a missing slash would corrupt the output.
+  #baseUrl;                             // URL prefix — paired with `#sourceRoot` to project stack-line URLs to disk paths
+  #sourceRoot;                          // absolute fs path — the disk projection of `#baseUrl`
+  #cwd;                                 // absolute fs path — output paths render relative to this
+  #parents          = [];               // currently-active subtest names: pushed on `# Subtest:`, popped on the inner `1..N` plan that closes it
+  #failures         = [];               // accumulated `{ breadcrumb, stackLines }` — drained by `#finalize`
+  #pendingFailure   = null;             // set on a leaf `not ok`; promoted to `#failures` on yamlClose iff we collected stack lines
+  #stackIndent      = null;             // strip column for stack lines, set when `yamlStackKey` fires inside a pendingFailure's yaml
   #state = {
     started:        false, // flipped true on `TAP version N`; gates all parsing
     inYaml:         false, // classification mode flag — inside a `---`/`...` block
-    inFailureBlock: false, // classification mode flag — inside `# Failures:` trailer
     ended:          false, // set by terminal TAP line; gates write/result
     result:         null,  // frozen snapshot produced at end-of-stream
     planStart:      null,  // lower bound of the `N..M` plan (null = no plan seen)
@@ -78,10 +72,13 @@ export class XTestCliTap {
     bailReason:     null,  // free text after `Bail out!`, if any
   };
 
-  constructor({ stream, color, endStream }) {
-    this.#stream    = stream;
-    this.#color     = color;
-    this.#endStream = endStream;
+  constructor({ stream, color, endStream, baseUrl, sourceRoot, cwd }) {
+    this.#stream     = stream;
+    this.#color      = color;
+    this.#endStream  = endStream;
+    this.#baseUrl    = baseUrl;
+    this.#sourceRoot = sourceRoot;
+    this.#cwd        = cwd;
   }
 
   /**
@@ -107,30 +104,20 @@ export class XTestCliTap {
   }
 
   /**
-   * Render a CLI-produced `# Coverage:` diagnostic block. Styles header /
-   * report / row lines regardless of whether the TAP stream has already ended —
-   * the coverage block lands *after* the plan line by construction (driver
-   * returns, CLI grades, CLI writes), so routing it through `write()` would put
-   * it on the post-end raw-passthrough path.
+   * Render a CLI-produced `# Coverage:` diagnostic block. Styles every line
+   * uniformly — `red` when any goal failed, `dim` otherwise. The caller
+   * gates this entirely on test-pass: when tests fail, coverage is skipped
+   * (don't muddy a failing run with secondary signals). Routing this
+   * through `write()` would put it on the post-end raw-passthrough path,
+   * hence the dedicated entry point.
    */
-  writeCoverage(block) {
+  writeCoverage(block, { ok }) {
+    const style = ok ? XTestCliTap.#styles.dim : XTestCliTap.#styles.red;
     const lines = block.split(/\r?\n/);
     if (lines.length > 0 && lines[lines.length - 1] === '') {
       lines.pop();
     }
     for (const line of lines) {
-      let style;
-      if (XTestCliTap.#coveragePatterns.coverageRowOk.test(line)) {
-        style = XTestCliTap.#styles.green;
-      } else if (XTestCliTap.#coveragePatterns.coverageRowNotOk.test(line)) {
-        style = XTestCliTap.#styles.red;
-      } else if (XTestCliTap.#coveragePatterns.coverageHeader.test(line)) {
-        style = XTestCliTap.#styles.dim;
-      } else if (XTestCliTap.#coveragePatterns.coverageReport.test(line)) {
-        style = XTestCliTap.#styles.dim;
-      } else if (XTestCliTap.#coveragePatterns.coverageBlank.test(line)) {
-        style = XTestCliTap.#styles.dim;
-      }
       this.#emit(line, style);
     }
   }
@@ -175,9 +162,54 @@ export class XTestCliTap {
       testOk, testNotOk, testSkip, testTodoOk, testTodoNotOk, testCount,
       planStart, planEnd, bailed, bailReason,
     };
+    this.#emitFailureBlock();
     if (this.#endStream) {
       this.#endStream();
     }
+  }
+
+  /**
+   * Render the trailing `# Failures:` summary from accumulated leaf failures.
+   * Owned by the CLI (not the in-browser test runner) so we can rewrite stack
+   * URLs to local paths, keep x-test minimal, and avoid a fragile contract
+   * where two layers must agree on the format.
+   */
+  #emitFailureBlock() {
+    if (this.#failures.length === 0) {
+      return;
+    }
+    this.#emit('# Failures:', XTestCliTap.#styles.red);
+    for (const failure of this.#failures) {
+      this.#emit('# ', XTestCliTap.#styles.red);
+      const [url, ...descriptions] = failure.breadcrumb;
+      // Leave the top url form intact. Rewriting it to a path lands on a
+      //  directory (the URL is typically served as `index.html`), and the
+      //  original URL is the actual link a developer would open to repro the
+      //  failure in a browser.
+      this.#emit(`# ${url}`, XTestCliTap.#styles.red);
+      for (const description of descriptions) {
+        this.#emit(`# > ${description}`, XTestCliTap.#styles.red);
+      }
+      for (const line of failure.stackLines) {
+        this.#emit(line === '' ? '#' : `# ${line}`, XTestCliTap.#styles.red);
+      }
+    }
+  }
+
+  /**
+   * Two-step substring rewrite:
+   *   1. `<baseUrl>` → `<sourceRoot>/` projects the served URL into its on-
+   *      disk location (both fully-qualified, so the swap is honest).
+   *   2. `<cwd>/`     → `''`            strips the cwd prefix so output is
+   *      bare cwd-relative (`x-test-cli-tap.js:200:5`).
+   * Each step no-ops when its substring isn't present — frames from another
+   * host or node:internal URLs pass through verbatim. Splitting steps lets
+   * `sourceRoot` and `cwd` differ (e.g. `root: './public'` puts sourceRoot
+   * one level below cwd, and output renders `public/foo.js` rather than
+   * losing the `public/` prefix).
+   */
+  #rewriteUrl(text) {
+    return text.split(this.#baseUrl).join(this.#sourceRoot).split(this.#cwd).join('');
   }
 
   /**
@@ -193,27 +225,19 @@ export class XTestCliTap {
 
   /**
    * Find the pattern that classifies `line`. State picks which set to
-   * iterate; each set ends in a catch-all sentinel (`unknown`, `yamlUnknown`,
-   * `failureUnknown`) so a hit is guaranteed.
+   * iterate; each set ends in a catch-all sentinel (`unknown`, `yamlUnknown`)
+   * so a hit is guaranteed.
    */
   #tryPatterns(line) {
-    // In yaml mode the set is exhaustive (ends in a catch-all). In failure
-    //  mode we only match comments/blanks so that a trailing plan / assert /
-    //  bail falls through to the main set and still terminates the stream.
-    const sets = this.#state.inYaml
-      ? [XTestCliTap.#inYamlPatterns]
-      : this.#state.inFailureBlock
-        ? [XTestCliTap.#inFailurePatterns, XTestCliTap.#patterns]
-        : [XTestCliTap.#patterns];
-    for (const patterns of sets) {
-      for (const pattern of Object.values(patterns)) {
-        const match = pattern.exec(line);
-        if (match) {
-          return { pattern, match };
-        }
+    // Yaml mode picks the yaml set, otherwise the main set. Both end in a
+    //  catch-all sentinel (`/^/`) so a hit is guaranteed.
+    const patterns = this.#state.inYaml ? XTestCliTap.#inYamlPatterns : XTestCliTap.#patterns;
+    for (const pattern of Object.values(patterns)) {
+      const match = pattern.exec(line);
+      if (match) {
+        return { pattern, match };
       }
     }
-    throw new Error('Invariant violated: every pattern set must end in a catch-all sentinel.');
   }
 
   /**
@@ -249,66 +273,83 @@ export class XTestCliTap {
         style = XTestCliTap.#styles.dim;
         break;
       case XTestCliTap.#patterns.subtest:
+        // Push entering the subtest; the matching inner `1..N` plan pops.
+        this.#parents.push(match.groups.name);
+        this.#pendingFailure = null;                    // rollups never trail a subtest header
         style = XTestCliTap.#styles.cyan;
         break;
       case XTestCliTap.#patterns.testSkip:
-        this.#state.inFailureBlock = false;
         if (atTopLevel) {
           this.#state.testSkip++;
         }
         style = XTestCliTap.#styles.orange;
         break;
       case XTestCliTap.#patterns.testTodoOk:
-        this.#state.inFailureBlock = false;
         if (atTopLevel) {
           this.#state.testTodoOk++;
         }
         style = XTestCliTap.#styles.yellow; // TODO that passed! Style yellow.
         break;
       case XTestCliTap.#patterns.testTodoNotOk:
-        this.#state.inFailureBlock = false;
         if (atTopLevel) {
           this.#state.testTodoNotOk++;
         }
         style = XTestCliTap.#styles.orange;
         break;
       case XTestCliTap.#patterns.testOk:
-        this.#state.inFailureBlock = false;
         if (atTopLevel) {
           this.#state.testOk++;
         }
         style = XTestCliTap.#styles.green;
         break;
-      case XTestCliTap.#patterns.testNotOk:
-        this.#state.inFailureBlock = false;
+      case XTestCliTap.#patterns.testNotOk: {
         if (atTopLevel) {
           this.#state.testNotOk++;
         }
+        // Stash a candidate failure. Promoted to `#failures` only if a yaml
+        //  block follows AND its `stack: |-` collects lines — that's how we
+        //  distinguish a leaf from a subtest rollup like
+        //  `not ok 3 - http://.../test-suite.html`.
+        const description = match.groups.description.trim();
+        const breadcrumb = [...this.#parents, description];
+        const stackLines = [];
+        this.#pendingFailure = { breadcrumb, stackLines };
         style = XTestCliTap.#styles.red;
         break;
+      }
       case XTestCliTap.#patterns.yamlOpen:
         this.#state.inYaml = true;
         style = XTestCliTap.#styles.dim;
         break;
       case XTestCliTap.#inYamlPatterns.yamlClose:
         this.#state.inYaml = false;
+        if (this.#pendingFailure) {
+          this.#failures.push(this.#pendingFailure);
+        }
+        this.#pendingFailure   = null;
+        this.#stackIndent = null;
+        style = XTestCliTap.#styles.dim;
+        break;
+      case XTestCliTap.#inYamlPatterns.yamlStackKey:
+        if (this.#pendingFailure) {
+          // The block-scalar header sits at `<keyIndent>stack: |-`; lines
+          //  beneath are indented by keyIndent + 2 (yaml convention).
+          this.#stackIndent = match.groups.indent.length + 2;
+        }
         style = XTestCliTap.#styles.dim;
         break;
       case XTestCliTap.#inYamlPatterns.yamlUnknown:
         // In-yaml body — dim the whole line regardless of its content.
+        //  When we're inside the active stack block, also collect each line
+        //  (stripped + URL-rewritten) into the pending failure's stackLines.
+        if (this.#pendingFailure && this.#stackIndent !== null) {
+          if (line.trim() === '') {
+            this.#pendingFailure.stackLines.push('');
+          } else if (line.length >= this.#stackIndent) {
+            this.#pendingFailure.stackLines.push(this.#rewriteUrl(line.slice(this.#stackIndent)));
+          }
+        }
         style = XTestCliTap.#styles.dim;
-        break;
-      case XTestCliTap.#patterns.failuresHeader:
-        // Sticky: once the trailing failure re-iteration block starts,
-        //  subsequent comments/blanks stay red until an assert fires.
-        this.#state.inFailureBlock = true;
-        style = XTestCliTap.#styles.red;
-        break;
-      case XTestCliTap.#inFailurePatterns.failureComment:
-        style = XTestCliTap.#styles.red;
-        break;
-      case XTestCliTap.#inFailurePatterns.failureBlank:
-        style = XTestCliTap.#styles.red;
         break;
       case XTestCliTap.#patterns.comment:
         style = XTestCliTap.#styles.dim;
@@ -318,6 +359,11 @@ export class XTestCliTap {
           this.#state.planStart = Number(match.groups.start);
           this.#state.planEnd   = Number(match.groups.end);
           this.#state.ended     = true; // Top-level plan is terminal.
+        } else {
+          // Inner plan closes the most recently opened subtest. Pairs with
+          //  the `push` in the subtest arm so the stack always reflects
+          //  currently-active subtests.
+          this.#parents.pop();
         }
         style = XTestCliTap.#styles.dim;
         break;

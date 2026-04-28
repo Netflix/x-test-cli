@@ -14,5 +14,16 @@ if (!file) {
   process.exit(0);
 }
 
-const tap = new XTestCliTap({ stream: process.stdout, color: false });
+// Mirror the CLI's runtime behavior: rewrite the demo origin to bare cwd-
+//  relative paths in the synthesized `# Failures:` block. Modern terminals
+//  (VSCode, iTerm2 with cwd tracking, Ghostty) click-resolve `path:line:col`
+//  against shell cwd. Fixtures whose stack frames don't reference this origin
+//  pass through untouched.
+const tap = new XTestCliTap({
+  stream:     process.stdout,
+  color:      false,
+  baseUrl:    'http://127.0.0.1:8080/',
+  sourceRoot: process.cwd() + '/',
+  cwd:        process.cwd() + '/',
+});
 tap.write(readFileSync(file, 'utf8'));
