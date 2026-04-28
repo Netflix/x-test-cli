@@ -23,6 +23,15 @@ const styles = {
   cyan:    '\x1b[36m',
 };
 
+// XTestCliTap requires baseUrl/sourceRoot/cwd. Tests that don't exercise URL
+//  rewriting pass these sentinels — non-matching strings (with trailing `/`
+//  per XTestCliTap's contract) so the rewrite is a no-op on test inputs.
+const NOOP_URL_MAP = {
+  baseUrl:    'http://__test_no_rewrite__/',
+  sourceRoot: '/__test_no_rewrite__/',
+  cwd:        '/__test_no_rewrite__/',
+};
+
 
 suite('result accumulation', () => {
   test('plan + passes → ok', () => {
@@ -32,7 +41,7 @@ suite('result accumulation', () => {
       ok 2 - b
       1..2
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -55,7 +64,7 @@ suite('result accumulation', () => {
       not ok 1 - broken
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: false,
@@ -79,7 +88,7 @@ suite('result accumulation', () => {
       ok 2
       1..3
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: false,
@@ -101,7 +110,7 @@ suite('result accumulation', () => {
       TAP version 14
       1..0
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -128,7 +137,7 @@ suite('result accumulation', () => {
       1..0
       ok 1 - surprise
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok:         true,
@@ -155,7 +164,7 @@ suite('result accumulation', () => {
       ok 1 - group
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     const result = tap.result;
     // Only the top-level `ok 1 - group` should count. The inner asserts
@@ -185,7 +194,7 @@ suite('result accumulation', () => {
       ok 1 - group
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -229,7 +238,7 @@ suite('result accumulation', () => {
       ok 2 - http://host/b/
       1..2
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -251,7 +260,7 @@ suite('result accumulation', () => {
       TAP version 14
       Bail out! launch timeout
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: false,
@@ -274,7 +283,7 @@ suite('result accumulation', () => {
       ok 1 plain description
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -297,7 +306,7 @@ suite('result accumulation', () => {
       ok
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -322,7 +331,7 @@ suite('directives', () => {
       not ok 1 - pending # TODO later
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -345,7 +354,7 @@ suite('directives', () => {
       ok 1 - feature # SKIP not supported
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -378,7 +387,7 @@ suite('passthrough (color off) is byte-identical', () => {
       1..4
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: false });
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === text);
@@ -393,7 +402,7 @@ suite('passthrough (color off) is byte-identical', () => {
         ...
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: false });
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === text);
@@ -411,7 +420,7 @@ suite('passthrough (color off) is byte-identical', () => {
       1..3
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(stripAnsi(out) === text);
@@ -429,7 +438,7 @@ suite('colorization', () => {
       ${styles.green}ok 1 - alpha${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -446,7 +455,7 @@ suite('colorization', () => {
       ${styles.red}not ok 2 - boom${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -463,7 +472,7 @@ suite('colorization', () => {
       ${styles.orange}ok 1 - feature # SKIP nope${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -480,7 +489,7 @@ suite('colorization', () => {
       ${styles.orange}not ok 1 - pending # TODO later${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -497,7 +506,7 @@ suite('colorization', () => {
       ${styles.yellow}ok 1 - surprise # TODO meant to fail${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -514,7 +523,7 @@ suite('colorization', () => {
       ${styles.boldRed}Bail out! launch timeout${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -525,7 +534,7 @@ suite('colorization', () => {
     const text = `TAP version 14\n    # Subtest: render\n`;
     const stylized = `${styles.dim}TAP version 14${styles.reset}\n${styles.cyan}    # Subtest: render${styles.reset}\n`;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -542,7 +551,7 @@ suite('colorization', () => {
       ${styles.dim}1..3${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -565,7 +574,7 @@ suite('colorization', () => {
       ${styles.green}ok 1 - after${styles.reset}
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -576,7 +585,7 @@ suite('colorization', () => {
     const text = `TAP version 14\n        ok 1 - deep\n`;
     const stylized = `${styles.dim}TAP version 14${styles.reset}\n${styles.green}        ok 1 - deep${styles.reset}\n`;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
     assert(out === stylized);
@@ -585,301 +594,331 @@ suite('colorization', () => {
 });
 
 suite('coverage summary', () => {
-  test('# Coverage: header → dim', () => {
-    const text = '# Coverage:\n';
-    const stylized = `${styles.dim}# Coverage:${styles.reset}\n`;
+  const sample = dedent`
+    # Coverage:
+    #
+    # ok     - 100% line coverage goal (got 100%)   | ./src/foo.js
+    # not ok - 65%  line coverage goal (got 60.64%) | ./src/bar.js
+  `;
+
+  test('ok=true → every line dim', () => {
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
+    tap.writeCoverage(sample, { ok: true });
     const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
+    for (const line of out.split('\n').filter(l => l.length > 0)) {
+      assert(line.startsWith(styles.dim));
+    }
+    assert(stripAnsi(out) === sample);
   });
 
-  test('coverage row starting with "ok" → green', () => {
-    const text = '# ok     - 100% line coverage goal (got 100%)   | ./src/foo.js\n';
-    const stylized = `${styles.green}# ok     - 100% line coverage goal (got 100%)   | ./src/foo.js${styles.reset}\n`;
+  test('ok=false → every line red', () => {
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
+    tap.writeCoverage(sample, { ok: false });
     const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
-  });
-
-  test('coverage row starting with "not ok" → red', () => {
-    const text = '# not ok - 65%  line coverage goal (got 60.64%) | ./src/bar.js\n';
-    const stylized = `${styles.red}# not ok - 65%  line coverage goal (got 60.64%) | ./src/bar.js${styles.reset}\n`;
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
-  });
-
-  test('# (see ...) trailer → dim', () => {
-    const text = '# (see ./coverage/lcov.info)\n';
-    const stylized = `${styles.dim}# (see ./coverage/lcov.info)${styles.reset}\n`;
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
-  });
-
-  test('blank `#` separator → dim', () => {
-    const text = '#\n';
-    const stylized = `${styles.dim}#${styles.reset}\n`;
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
-  });
-
-  test('unknown lines inside a coverage block render raw', () => {
-    // Anything the four coverage patterns don't classify slips through
-    //  without style. Keeps the method forgiving about surprise content.
-    const text = 'garbage line here\n';
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.writeCoverage(text);
-    const out = stream.read().toString();
-    assert(out === text);
+    for (const line of out.split('\n').filter(l => l.length > 0)) {
+      assert(line.startsWith(styles.red));
+    }
+    assert(stripAnsi(out) === sample);
   });
 
   test('coverage block renders raw when color is off', () => {
-    const text = dedent`
-      # Coverage:
-      #
-      # ok     - 100% line coverage goal (got 100%)   | ./src/foo.js
-      # not ok - 65%  line coverage goal (got 60.64%) | ./src/bar.js
-      #
-      # (see ./coverage/lcov.info)
-    `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: false });
-    tap.writeCoverage(text);
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.writeCoverage(sample, { ok: true });
     const out = stream.read().toString();
-    assert(out === text);
+    assert(out === sample);
   });
 
   test('writeCoverage does not mutate tap.result', () => {
     // The coverage block arrives after auto-end; writeCoverage is a
     //  separate rendering path that never touches the parser state.
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
+    tap.write(dedent`
+      TAP version 14
+      ok 1 - a
+      1..1
+    `);
+    const resultBefore = tap.result;
+    tap.writeCoverage(sample, { ok: true });
+    assert(tap.result === resultBefore);               // Same frozen snapshot.
+  });
+});
+
+suite('failure-block synthesis', () => {
+  // The CLI re-iterates leaf failures as a trailing `# Failures:` block on
+  //  finalize — owns the format end-to-end so x-test stays minimal and
+  //  stack-trace URLs can be rewritten to local paths for click-to-open.
+
+  test('a single nested leaf failure renders the breadcrumb + stack', () => {
+    const text = dedent`
+      TAP version 14
+      # Subtest: http://host/page.html
+          # Subtest: group
+              not ok 1 - leaf failed
+                ---
+                message: not ok
+                severity: fail
+                stack: |-
+                  Error: not ok
+                      at fn (http://host/lib.js:10:5)
+                ...
+              1..1
+          not ok 1 - group
+          1..1
+      not ok 1 - http://host/page.html
+      1..1
+    `;
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.write(text);
+    const out = stripAnsi(stream.read().toString());
+    // Build the expected trailer explicitly: the blank-separator line is
+    //  `# ` (trailing space) — survives editor trim-trailing-whitespace,
+    //  which a dedent literal would not.
+    const expected = [
+      '# Failures:',
+      '# ',
+      '# http://host/page.html',
+      '# > group',
+      '# > leaf failed',
+      '# Error: not ok',
+      '#     at fn (http://host/lib.js:10:5)',
+      '',
+    ].join('\n');
+    assert(out.endsWith(expected));
+  });
+
+  test('rollup `not ok` (no trailing yaml) is dropped from the block', () => {
+    // `not ok 3 - http://.../page.html` is the URL-level rollup of nested
+    //  failures; its detail already lives in the leaf entry. Dropping it
+    //  prevents duplicate noise. Leaves are identified by a trailing yaml
+    //  diagnostic — rollups don't have one.
+    const text = dedent`
+      TAP version 14
+      # Subtest: http://host/page.html
+          not ok 1 - leaf
+            ---
+            stack: |-
+              Error: leaf
+                  at one (http://host/a.js:1:1)
+            ...
+          1..1
+      not ok 1 - http://host/page.html
+      1..1
+    `;
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.write(text);
+    const out = stripAnsi(stream.read().toString());
+    // One failure entry, not two.
+    assert(out.match(/# Failures:/g).length === 1);
+    assert(out.match(/^# Error:/gm).length === 1);
+  });
+
+  test('multiple sibling leaves each get their own entry', () => {
+    const text = dedent`
+      TAP version 14
+      # Subtest: http://host/page.html
+          not ok 1 - first
+            ---
+            stack: |-
+              Error: first
+                  at one (http://host/a.js:1:1)
+            ...
+          not ok 2 - second
+            ---
+            stack: |-
+              Error: second
+                  at two (http://host/b.js:2:2)
+            ...
+          1..2
+      not ok 1 - http://host/page.html
+      1..1
+    `;
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.write(text);
+    const out = stripAnsi(stream.read().toString());
+    assert(out.includes('# > first'));
+    assert(out.includes('# > second'));
+    assert(out.match(/^# Error:/gm).length === 2);
+  });
+
+  test('TODO `not ok` does not enter the failures block', () => {
+    const text = dedent`
+      TAP version 14
+      not ok 1 - pending # TODO later
+        ---
+        stack: |-
+          Error: pending
+              at x (http://host/x.js:1:1)
+        ...
+      1..1
+    `;
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.write(text);
+    const out = stripAnsi(stream.read().toString());
+    assert(!out.includes('# Failures:'));
+  });
+
+  test('passing run (no leaves) emits no failures block', () => {
     const text = dedent`
       TAP version 14
       ok 1 - a
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
     tap.write(text);
-    const resultBefore = tap.result;
-    tap.writeCoverage(dedent`
-      # Coverage:
-      #
-      # ok - 100% line coverage goal (got 100%) | ./src/foo.js
-      #
-      # (see ./coverage/lcov.info)
-    `);
-    assert(tap.result === resultBefore);               // Same frozen snapshot.
+    const out = stripAnsi(stream.read().toString());
+    assert(!out.includes('# Failures:'));
   });
-});
 
-suite('failure re-iteration block', () => {
-  test('# Failures: enters the block; all subsequent `#` lines are red', () => {
+  test('rewrite swaps stack frames but NOT the breadcrumb head', () => {
+    // The head is the test page URL (typically served as `index.html` from a
+    //  directory). Rewriting it to a path lands on a directory and the link
+    //  breaks; the original URL is also more useful — it's what a developer
+    //  would open in a browser to repro.
     const text = dedent`
       TAP version 14
-      # Failures:
-      #
-      # http://host/f.html
-      # > initialize
-      # Error: not ok
-      #     at XTestSuite.assert (http://host/x-test-suite.js:112:15)
-    `;
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-      ${styles.red}#${styles.reset}
-      ${styles.red}# http://host/f.html${styles.reset}
-      ${styles.red}# > initialize${styles.reset}
-      ${styles.red}# Error: not ok${styles.reset}
-      ${styles.red}#     at XTestSuite.assert (http://host/x-test-suite.js:112:15)${styles.reset}
+      # Subtest: http://host/page/
+          not ok 1 - leaf
+            ---
+            stack: |-
+              Error: leaf
+                  at fn (http://host/src/lib.js:42:7)
+            ...
+          1..1
+      not ok 1 - http://host/page/
+      1..1
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({
+      stream, color: false,
+      baseUrl:    'http://host/',
+      sourceRoot: '/root/',
+      cwd:        '/root/',
+    });
     tap.write(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
+    const out = stripAnsi(stream.read().toString());
+    const trailer = out.slice(out.indexOf('# Failures:'));
+    assert(trailer.includes('# http://host/page/'));            // Head left alone.
+    assert(trailer.includes('#     at fn (src/lib.js:42:7)'));  // Frame rewritten (bare).
   });
 
-  test('URL and breadcrumb are red only AFTER # Failures:', () => {
+  test('non-matching origins in stack frames pass through verbatim', () => {
     const text = dedent`
       TAP version 14
-      # http://host/somewhere.html
-      # Failures:
-      # http://host/failed.html
-      # > leaf
-    `;
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.dim}# http://host/somewhere.html${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-      ${styles.red}# http://host/failed.html${styles.reset}
-      ${styles.red}# > leaf${styles.reset}
+      # Subtest: http://host/page.html
+          not ok 1 - leaf
+            ---
+            stack: |-
+              Error: leaf
+                  at internal (node:internal/worker:284:11)
+                  at cdn (https://cdn.example.com/vendor.js:1:1)
+            ...
+          1..1
+      not ok 1 - http://host/page.html
+      1..1
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({
+      stream, color: false,
+      baseUrl:    'http://host/',
+      sourceRoot: '/root/',
+      cwd:        '/root/',
+    });
     tap.write(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
+    const out = stripAnsi(stream.read().toString());
+    assert(out.includes('# Failures:'));
+    assert(out.includes('node:internal/worker:284:11'));
+    assert(out.includes('https://cdn.example.com/vendor.js:1:1'));
   });
 
-  test('blank separator inside the block is red', () => {
+  test('depth ≥ 3 builds the full breadcrumb chain', () => {
     const text = dedent`
       TAP version 14
-      # Failures:
-      # http://host/first.html
-      # > leaf
-      #
-      # http://host/second.html
-    `;
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-      ${styles.red}# http://host/first.html${styles.reset}
-      ${styles.red}# > leaf${styles.reset}
-      ${styles.red}#${styles.reset}
-      ${styles.red}# http://host/second.html${styles.reset}
+      # Subtest: http://host/page.html
+          # Subtest: outer
+              # Subtest: inner
+                  not ok 1 - the leaf
+                    ---
+                    stack: |-
+                      Error: leaf
+                          at z (http://host/z.js:1:1)
+                    ...
+                  1..1
+              not ok 1 - inner
+              1..1
+          not ok 1 - outer
+          1..1
+      not ok 1 - http://host/page.html
+      1..1
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
     tap.write(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
+    const out = stripAnsi(stream.read().toString());
+    assert(out.includes('# http://host/page.html'));
+    assert(out.includes('# > outer'));
+    assert(out.includes('# > inner'));
+    assert(out.includes('# > the leaf'));
   });
 
-  test('truly empty line inside the block is red', () => {
+  test('synthesis emits red after the terminal plan (does not race finalize)', () => {
+    // The block is written from `#finalize`, which fires on the terminal
+    //  plan line. Confirms the red styling lands and that lines arrive
+    //  AFTER the dim-styled plan.
     const text = dedent`
       TAP version 14
-      # Failures:
-      # http://host/first.html
-
-      # http://host/second.html
-    `;
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-      ${styles.red}# http://host/first.html${styles.reset}
-      ${styles.red}${styles.reset}
-      ${styles.red}# http://host/second.html${styles.reset}
-    `;
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.write(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
-  });
-
-  test('a real TAP line inside the block exits failure mode', () => {
-    const text = dedent`
-      TAP version 14
-      # Failures:
-      # http://host/f.html
-      # > leaf
-      ok 1 - a stray test line
-      # ordinary comment
-    `;
-    // Only comments / blanks are sticky-red inside the failure trailer. A
-    //  real assert / plan / bail falls through to the main pattern set,
-    //  clears `inFailureBlock`, and is classified normally — otherwise the
-    //  terminal plan would be swallowed and the stream would hang.
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-      ${styles.red}# http://host/f.html${styles.reset}
-      ${styles.red}# > leaf${styles.reset}
-      ${styles.green}ok 1 - a stray test line${styles.reset}
-      ${styles.dim}# ordinary comment${styles.reset}
+      # Subtest: http://host/page.html
+          not ok 1 - leaf
+            ---
+            stack: |-
+              Error: leaf
+                  at fn (http://host/x.js:1:1)
+            ...
+          1..1
+      not ok 1 - http://host/page.html
+      1..1
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     tap.write(text);
     const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
+    const idxPlan     = out.indexOf('1..1');
+    const idxFailures = out.indexOf(`${styles.red}# Failures:`);
+    assert(idxPlan !== -1 && idxFailures !== -1 && idxPlan < idxFailures);
+    // The synthesized region uses red exclusively (no green/orange/cyan/etc).
+    const synthesized = out.slice(idxFailures);
+    assert(synthesized.includes(styles.red));
+    for (const otherStyle of [styles.green, styles.orange, styles.yellow, styles.cyan, styles.boldRed, styles.dim]) {
+      assert(!synthesized.includes(otherStyle));
+    }
   });
 
-  test('terminal plan after # Failures: fires endStream (regression: hang on failure)', () => {
-    // Regression: `# Failures:` used to switch the parser to a pattern set
-    //  with a catch-all sentinel, so the trailing `1..N` was consumed as
-    //  failure commentary and `endStream` never fired — the CLI would hang
-    //  to the global timeout on any test run that had failures.
+  test('endStream fires exactly once even when failures synthesize', () => {
     let ended = 0;
     const tap = new XTestCliTap({
       stream: new PassThrough(),
       color:  false,
       endStream: () => { ended++; },
+      ...NOOP_URL_MAP,
     });
     tap.write(dedent`
       TAP version 14
-      not ok 1 - broken
-      # Failures:
-      # http://host/f.html
-      # > leaf
+      not ok 1 - leaf
+        ---
+        stack: |-
+          Error: leaf
+              at fn (http://host/x.js:1:1)
+        ...
       1..1
     `);
     assert(ended === 1);
-    assert(tap.result.ok === false);
-    assert(tap.result.testNotOk === 1);
-    assert(tap.result.planEnd === 1);
-  });
-
-  test('terminal Bail out! after # Failures: fires endStream', () => {
-    let ended = 0;
-    const tap = new XTestCliTap({
-      stream: new PassThrough(),
-      color:  false,
-      endStream: () => { ended++; },
-    });
-    tap.write(dedent`
-      TAP version 14
-      # Failures:
-      # http://host/f.html
-      Bail out! cannot continue
-    `);
-    assert(ended === 1);
-    assert(tap.result.bailed === true);
-  });
-
-  test('summary `#` lines BEFORE the block stay dim', () => {
-    const text = dedent`
-      TAP version 14
-      # tests 101
-      # pass 91
-      # fail 1
-      # Failures:
-    `;
-    const stylized = dedent`
-      ${styles.dim}TAP version 14${styles.reset}
-      ${styles.dim}# tests 101${styles.reset}
-      ${styles.dim}# pass 91${styles.reset}
-      ${styles.dim}# fail 1${styles.reset}
-      ${styles.red}# Failures:${styles.reset}
-    `;
-    const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
-    tap.write(text);
-    const out = stream.read().toString();
-    assert(out === stylized);
-    assert(stripAnsi(out) === text);
   });
 });
 
@@ -892,7 +931,7 @@ suite('edge cases', () => {
       ok 1 - real test
       1..1
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -911,7 +950,7 @@ suite('edge cases', () => {
 
   test('handles \\r\\n (Windows) line endings', () => {
     const text = 'TAP version 14\r\nok 1 - hi\r\n1..1\r\n';
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -935,7 +974,7 @@ suite('edge cases', () => {
       NOT OK 1
       1..0
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -958,7 +997,7 @@ suite('edge cases', () => {
       okay then
       1..0
     `;
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write(text);
     assert.deepEqual(tap.result, {
       ok: true,
@@ -990,7 +1029,7 @@ suite('write() handles multi-line blobs (browser-bridge path)', () => {
       1..1
     `;
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: true });
+    const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
     assert.doesNotThrow(() => tap.write(blob));
     assert(stream.read().toString().length > 0);
     assert(tap.result.testNotOk === 1);
@@ -1007,11 +1046,11 @@ suite('write() handles multi-line blobs (browser-bridge path)', () => {
     `;
 
     const streamA = new PassThrough();
-    const tapA = new XTestCliTap({ stream: streamA, color: false });
+    const tapA = new XTestCliTap({ stream: streamA, color: false, ...NOOP_URL_MAP });
     tapA.write(text);
 
     const streamB = new PassThrough();
-    const tapB = new XTestCliTap({ stream: streamB, color: false });
+    const tapB = new XTestCliTap({ stream: streamB, color: false, ...NOOP_URL_MAP });
     for (const line of text.split('\n')) {
       tapB.write(line);
     }
@@ -1022,12 +1061,12 @@ suite('write() handles multi-line blobs (browser-bridge path)', () => {
 
 suite('lifecycle guards', () => {
   test('.result before the stream terminates throws', () => {
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     assert.throws(() => tap.result, /result accessed before end/);
   });
 
   test('.result after the stream terminates returns the frozen result', () => {
-    const tap = new XTestCliTap({ stream: new PassThrough(), color: false });
+    const tap = new XTestCliTap({ stream: new PassThrough(), color: false, ...NOOP_URL_MAP });
     tap.write('TAP version 14\n1..0');
     assert.doesNotThrow(() => tap.result);
     // Repeated reads return the same object.
@@ -1036,7 +1075,7 @@ suite('lifecycle guards', () => {
 
   test('write() after the stream terminates passes the line through raw', () => {
     const stream = new PassThrough();
-    const tap = new XTestCliTap({ stream, color: false });
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
     tap.write('TAP version 14\nok 1 - a\n1..1');        // Plan terminates.
     const frozen = tap.result;
     tap.write('# trailing diagnostic\n');              // Post-end write.
@@ -1053,6 +1092,7 @@ suite('auto-end', () => {
       stream: new PassThrough(),
       color:  false,
       endStream: () => { ended++; },
+      ...NOOP_URL_MAP,
     });
     tap.write('TAP version 14\nok 1 - a\nok 2 - b\n1..2');
     assert(ended === 1);
@@ -1066,6 +1106,7 @@ suite('auto-end', () => {
       stream: new PassThrough(),
       color:  false,
       endStream: () => { ended++; },
+      ...NOOP_URL_MAP,
     });
     tap.write('TAP version 14\nBail out! launch timeout');
     assert(ended === 1);
@@ -1082,6 +1123,7 @@ suite('auto-end', () => {
       stream: new PassThrough(),
       color:  false,
       endStream: () => { ended++; },
+      ...NOOP_URL_MAP,
     });
     tap.write('TAP version 14\n1..0');
     assert(ended === 1);
@@ -1095,6 +1137,7 @@ suite('auto-end', () => {
       stream: new PassThrough(),
       color:  false,
       endStream: () => { ended++; },
+      ...NOOP_URL_MAP,
     });
     tap.write('TAP version 14\nok 1 - a\n1..1');        // Auto-ends on plan line.
     tap.write('ok 2 - surprise');                      // Post-end, not counted.

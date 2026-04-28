@@ -13,5 +13,11 @@ if (!file) {
   process.exit(0);
 }
 
-const tap = new XTestCliTap({ stream: process.stdout, color: true });
+const tap = new XTestCliTap({
+  stream:     process.stdout,
+  color:      true,
+  baseUrl:    'http://127.0.0.1:8080/',
+  sourceRoot: process.cwd() + '/',
+  cwd:        process.cwd() + '/',
+});
 tap.write(readFileSync(file, 'utf8'));

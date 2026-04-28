@@ -190,7 +190,7 @@ export class XTestCliCoverage {
    * Status token is native TAP vocabulary — `ok` / `not ok` — so readers
    * who scan TAP already know what it means.
    */
-  static formatCoverageBlock({ result, lcovPath }) {
+  static formatCoverageBlock({ result }) {
     // Columns we pad to max width across all rows:
     //   status   — “ok” or “not ok”                 (max width: 6)
     //   goal     — “65%” or “100%”                  (max width: 4)
@@ -212,8 +212,6 @@ export class XTestCliCoverage {
       '# Coverage:',
       '#',
       ...rows,
-      '#',
-      `# (see ${lcovPath})`,
     ].join('\n');
   }
 

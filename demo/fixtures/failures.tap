@@ -1,0 +1,37 @@
+TAP version 14
+# Subtest: http://127.0.0.1:8080/test/browser/index.html
+    # Subtest: failure re-iteration block
+        ok 1 - styles trailer comments red
+        not ok 2 - emits the synthesized block on plan
+          ---
+          message: not ok
+          severity: fail
+          stack: |-
+            Error: not ok
+                at XTestCliTap.#emitFailureBlock (http://127.0.0.1:8080/x-test-cli-tap.js:200:5)
+                at XTestCliTap.#finalize (http://127.0.0.1:8080/x-test-cli-tap.js:184:10)
+                at XTestCliTap.#processLine (http://127.0.0.1:8080/x-test-cli-tap.js:380:7)
+                at http://127.0.0.1:8080/test/node/tap.test.js:715:5
+          ...
+        1..2
+    not ok 1 - failure re-iteration block
+    1..1
+not ok 1 - http://127.0.0.1:8080/test/browser/index.html
+# Subtest: http://127.0.0.1:8080/test/browser/index.html
+    # Subtest: lcov writer
+        not ok 1 - writes one record per targeted file
+          ---
+          message: not ok
+          severity: fail
+          stack: |-
+            Error: not ok
+                at writeLcov (http://127.0.0.1:8080/x-test-cli-coverage.js:120:9)
+                at http://127.0.0.1:8080/x-test-cli.js:343:33
+                at MessagePort.<anonymous> (node:internal/worker:284:11)
+                at fetch (https://cdn.example.com/vendor/lib.js:42:9)
+          ...
+        1..1
+    not ok 1 - lcov writer
+    1..1
+not ok 2 - http://127.0.0.1:8080/test/browser/index.html
+1..2
