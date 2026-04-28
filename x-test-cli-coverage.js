@@ -81,19 +81,19 @@ export class XTestCliCoverage {
    * URL-base algorithm, `'./src/foo.js'` maps to `http://<origin>/src/foo.js` —
    * which is exactly the form V8 reports for the served scripts.
    *
-   * Returns `{ ok, rows }`. `ok` is true iff every goal was met.
+   * Returns `{ ok, results }`. `ok` is true iff every goal was met.
    */
   static gradeCoverage({ entries, origin, goals }) {
     // Duplicate entries (same URL, different executions) merge into one so a
     //  file loaded twice is graded on the union of its observed coverage, not
     //  on whichever execution happened to be first in the list.
     const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
-    const rows = [];
+    const results = [];
     for (const [path, spec] of Object.entries(goals)) {
       const resolvedUrl = new URL(path, origin + '/').href;
       const entry = prepared.find(item => item.url === resolvedUrl);
       if (!entry) {
-        rows.push({
+        results.push({
           path,
           resolvedUrl,
           lines: {
@@ -109,7 +109,7 @@ export class XTestCliCoverage {
       }
       const hits = XTestCliCoverage.computeLineHits(entry);
       const percent = hits.total === 0 ? 100 : XTestCliCoverage.#roundTwo(hits.covered / hits.total * 100);
-      rows.push({
+      results.push({
         path,
         resolvedUrl,
         lines: {
@@ -122,7 +122,7 @@ export class XTestCliCoverage {
         },
       });
     }
-    return { ok: rows.every(row => row.lines.met), rows };
+    return { ok: results.every(result => result.lines.met), results };
   }
 
   /**
@@ -182,57 +182,6 @@ export class XTestCliCoverage {
     const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
     await writeFile(path, XTestCliCoverage.#formatLcov(prepared, { origin, sourceRoot }));
     return path;
-  }
-
-  /**
-   * TAP `#` diagnostic block for the coverage summary. Returns a single
-   * newline-joined string the caller writes to the TAP stream verbatim.
-   * Status token is native TAP vocabulary — `ok` / `not ok` — so readers
-   * who scan TAP already know what it means.
-   */
-  static formatCoverageBlock({ result }) {
-    // Columns we pad to max width across all rows:
-    //   status   — “ok” or “not ok”                 (max width: 6)
-    //   goal     — “65%” or “100%”                  (max width: 4)
-    //   got      — “(got 60.64%)” or “(missing)”
-    // Padding keeps the `| <path>` column visually aligned regardless of
-    //  which rows are missing or have short percentages.
-    const statusWidth = Math.max(0, ...result.rows.map(row => XTestCliCoverage.#statusOf(row).length));
-    const goalWidth   = Math.max(0, ...result.rows.map(row => `${row.lines.goal}%`.length));
-    const gotWidth    = Math.max(0, ...result.rows.map(row => XTestCliCoverage.#gotOf(row.lines).length));
-
-    const rows = result.rows.map(row => {
-      const status = XTestCliCoverage.#statusOf(row).padEnd(statusWidth, ' ');
-      const goal   = `${row.lines.goal}%`.padEnd(goalWidth, ' ');
-      const got    = XTestCliCoverage.#gotOf(row.lines).padEnd(gotWidth, ' ');
-      return `# ${status} - ${goal} line coverage goal ${got} | ${row.path}`;
-    });
-
-    return [
-      '# Coverage:',
-      '#',
-      ...rows,
-    ].join('\n');
-  }
-
-  static #statusOf(row) {
-    return row.lines.met ? 'ok' : 'not ok';
-  }
-
-  static #gotOf(lines) {
-    if (lines.missing) {
-      return '(missing)';
-    }
-    return `(got ${XTestCliCoverage.#formatPercent(lines.percent)}%)`;
-  }
-
-  /**
-   * Two decimal places, trailing zeros trimmed — so `100` stays `100`, `60.6`
-   * stays `60.6`, and `60.6333…` renders as `60.63`. Matches the shape the user
-   * specified without carrying spurious zeros.
-   */
-  static #formatPercent(value) {
-    return Number(value.toFixed(2)).toString();
   }
 
   /**

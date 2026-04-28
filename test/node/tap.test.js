@@ -594,41 +594,78 @@ suite('colorization', () => {
 });
 
 suite('coverage summary', () => {
-  const sample = dedent`
+  // Mirrors `XTestCliCoverage.gradeCoverage`'s `rows` shape — TAP synthesizes
+  //  the comment block from these directly. The block-level styling (`ok`
+  //  vs `red`) is derived from `rows.every(r => r.lines.met)`, so a row's
+  //  `met` flag drives the visual outcome.
+  const passingRow = { path: './src/foo.js', lines: { covered: 100, total: 100, percent: 100,   goal: 100, met: true,  missing: false } };
+  const failingRow = { path: './src/bar.js', lines: { covered:  60, total:  99, percent: 60.64, goal:  65, met: false, missing: false } };
+  const mixedExpected = dedent`
     # Coverage:
     #
     # ok     - 100% line coverage goal (got 100%)   | ./src/foo.js
     # not ok - 65%  line coverage goal (got 60.64%) | ./src/bar.js
   `;
 
-  test('ok=true → every line dim', () => {
+  test('full shape: header, blank, padded rows', () => {
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.writeCoverage([passingRow, failingRow]);
+    const out = stream.read().toString();
+    assert(out === mixedExpected);
+  });
+
+  test('all rows met → every line dim', () => {
     const stream = new PassThrough();
     const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
-    tap.writeCoverage(sample, { ok: true });
+    tap.writeCoverage([passingRow]);
     const out = stream.read().toString();
     for (const line of out.split('\n').filter(l => l.length > 0)) {
       assert(line.startsWith(styles.dim));
     }
-    assert(stripAnsi(out) === sample);
   });
 
-  test('ok=false → every line red', () => {
+  test('any row unmet → every line red', () => {
     const stream = new PassThrough();
     const tap = new XTestCliTap({ stream, color: true, ...NOOP_URL_MAP });
-    tap.writeCoverage(sample, { ok: false });
+    tap.writeCoverage([passingRow, failingRow]);
     const out = stream.read().toString();
     for (const line of out.split('\n').filter(l => l.length > 0)) {
       assert(line.startsWith(styles.red));
     }
-    assert(stripAnsi(out) === sample);
   });
 
-  test('coverage block renders raw when color is off', () => {
+  test('missing row uses "(missing)" where (got N%) would go', () => {
     const stream = new PassThrough();
     const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
-    tap.writeCoverage(sample, { ok: true });
+    tap.writeCoverage([
+      { path: './src/missing.js', lines: { covered: 0, total: 0, percent: 0, goal: 80, met: false, missing: true } },
+    ]);
     const out = stream.read().toString();
-    assert(out === sample);
+    assert(out === dedent`
+      # Coverage:
+      #
+      # not ok - 80% line coverage goal (missing) | ./src/missing.js
+    `);
+  });
+
+  test('percent trims trailing zeros but keeps two-decimal precision', () => {
+    const stream = new PassThrough();
+    const tap = new XTestCliTap({ stream, color: false, ...NOOP_URL_MAP });
+    tap.writeCoverage([
+      // 60.6000 → "60.6"; 60.6333 → "60.63"; 100.00 → "100"
+      { path: 'a', lines: { covered: 1, total: 1, percent: 60.6,  goal:  50, met: true, missing: false } },
+      { path: 'b', lines: { covered: 1, total: 1, percent: 60.63, goal:  50, met: true, missing: false } },
+      { path: 'c', lines: { covered: 1, total: 1, percent: 100,   goal: 100, met: true, missing: false } },
+    ]);
+    const out = stream.read().toString();
+    assert(out === dedent`
+      # Coverage:
+      #
+      # ok - 50%  line coverage goal (got 60.6%)  | a
+      # ok - 50%  line coverage goal (got 60.63%) | b
+      # ok - 100% line coverage goal (got 100%)   | c
+    `);
   });
 
   test('writeCoverage does not mutate tap.result', () => {
@@ -641,7 +678,7 @@ suite('coverage summary', () => {
       1..1
     `);
     const resultBefore = tap.result;
-    tap.writeCoverage(sample, { ok: true });
+    tap.writeCoverage([passingRow]);
     assert(tap.result === resultBefore);               // Same frozen snapshot.
   });
 });

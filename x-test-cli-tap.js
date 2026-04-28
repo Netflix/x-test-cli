@@ -104,21 +104,38 @@ export class XTestCliTap {
   }
 
   /**
-   * Render a CLI-produced `# Coverage:` diagnostic block. Styles every line
-   * uniformly — `red` when any goal failed, `dim` otherwise. The caller
-   * gates this entirely on test-pass: when tests fail, coverage is skipped
-   * (don't muddy a failing run with secondary signals). Routing this
-   * through `write()` would put it on the post-end raw-passthrough path,
-   * hence the dedicated entry point.
+   * Synthesize and render the `# Coverage:` block from structured grading
+   * rows. Styles every line uniformly — `red` when any goal failed, `dim`
+   * otherwise. Caller gates on test-pass: when tests fail, coverage is
+   * skipped (don't muddy a failing run with secondary signals). Routing
+   * this through `write()` would put it on the post-end raw-passthrough
+   * path, hence the dedicated entry point. Mirrors `#emitFailureBlock`'s
+   * "structured-data → comment-block" shape.
    */
-  writeCoverage(block, { ok }) {
+  writeCoverage(results) {
+    const ok = results.every(result => result.lines.met);
     const style = ok ? XTestCliTap.#styles.dim : XTestCliTap.#styles.red;
-    const lines = block.split(/\r?\n/);
-    if (lines.length > 0 && lines[lines.length - 1] === '') {
-      lines.pop();
-    }
-    for (const line of lines) {
-      this.#emit(line, style);
+    // Columns padded to max width across all results:
+    //   status — "ok" or "not ok"           (max width: 6)
+    //   goal   — "65%" or "100%"            (max width: 4)
+    //   got    — "(got 60.64%)" or "(missing)"
+    // Padding keeps the `| <path>` column aligned regardless of which
+    //  results are missing or have short percentages.
+    const statusOf = result => result.lines.met ? 'ok' : 'not ok';
+    const gotOf    = result => result.lines.missing
+      ? '(missing)'
+      : `(got ${Number(result.lines.percent.toFixed(2))}%)`;
+    const statusWidth = Math.max(0, ...results.map(result => statusOf(result).length));
+    const goalWidth   = Math.max(0, ...results.map(result => `${result.lines.goal}%`.length));
+    const gotWidth    = Math.max(0, ...results.map(result => gotOf(result).length));
+
+    this.#emit('# Coverage:', style);
+    this.#emit('#',           style);
+    for (const result of results) {
+      const status = statusOf(result).padEnd(statusWidth, ' ');
+      const goal   = `${result.lines.goal}%`.padEnd(goalWidth, ' ');
+      const got    = gotOf(result).padEnd(gotWidth, ' ');
+      this.#emit(`# ${status} - ${goal} line coverage goal ${got} | ${result.path}`, style);
     }
   }
 
