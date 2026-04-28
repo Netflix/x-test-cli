@@ -135,10 +135,10 @@ suite('XTestCliCoverage.gradeCoverage', () => {
       goals:   { './src/a.js': { lines: 100 } },
     });
     assert(result.ok === true);
-    assert(result.rows.length === 1);
-    assert(result.rows[0].lines.met === true);
-    assert(result.rows[0].lines.percent === 100);
-    assert(result.rows[0].lines.missing === false);
+    assert(result.results.length === 1);
+    assert(result.results[0].lines.met === true);
+    assert(result.results[0].lines.percent === 100);
+    assert(result.results[0].lines.missing === false);
   });
 
   test('goal above percent → not met, overall not ok', () => {
@@ -151,8 +151,8 @@ suite('XTestCliCoverage.gradeCoverage', () => {
       goals:   { './src/a.js': { lines: 100 } },
     });
     assert(result.ok === false);
-    assert(result.rows[0].lines.met === false);
-    assert(result.rows[0].lines.percent === 50);
+    assert(result.results[0].lines.met === false);
+    assert(result.results[0].lines.percent === 50);
   });
 
   test('missing goal file → row flagged missing, not met', () => {
@@ -162,9 +162,9 @@ suite('XTestCliCoverage.gradeCoverage', () => {
       goals:   { './src/missing.js': { lines: 80 } },
     });
     assert(result.ok === false);
-    assert(result.rows[0].lines.missing === true);
-    assert(result.rows[0].lines.met === false);
-    assert(result.rows[0].lines.goal === 80);
+    assert(result.results[0].lines.missing === true);
+    assert(result.results[0].lines.met === false);
+    assert(result.results[0].lines.goal === 80);
   });
 
   test('percent uses two-decimal rounding', () => {
@@ -176,59 +176,8 @@ suite('XTestCliCoverage.gradeCoverage', () => {
       origin,
       goals:   { './src/a.js': { lines: 30 } },
     });
-    assert(result.rows[0].lines.percent === 33.33);
-    assert(result.rows[0].lines.met === true);
-  });
-});
-
-suite('XTestCliCoverage.formatCoverageBlock', () => {
-  test('full shape: header, blank, rows', () => {
-    const result = {
-      ok: false,
-      rows: [
-        { path: './src/reporter.js', lines: { covered:  60, total:  99, percent: 60.61, goal: 65,  met: false, missing: false } },
-        { path: './src/x-test.js',   lines: { covered: 100, total: 100, percent: 100,   goal: 100, met: true,  missing: false } },
-      ],
-    };
-    const expected = dedent`
-      # Coverage:
-      #
-      # not ok - 65%  line coverage goal (got 60.61%) | ./src/reporter.js
-      # ok     - 100% line coverage goal (got 100%)   | ./src/x-test.js`;
-    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
-  });
-
-  test('missing row uses "(missing)" where (got N%) would go', () => {
-    const result = {
-      ok: false,
-      rows: [
-        { path: './src/missing.js', lines: { covered: 0, total: 0, percent: 0, goal: 80, met: false, missing: true } },
-      ],
-    };
-    const expected = dedent`
-      # Coverage:
-      #
-      # not ok - 80% line coverage goal (missing) | ./src/missing.js`;
-    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
-  });
-
-  test('percent trims trailing zeros but keeps two-decimal precision', () => {
-    const result = {
-      ok: true,
-      rows: [
-        // 60.6000 → "60.6"; 60.6333 → "60.63"; 100.00 → "100"
-        { path: 'a', lines: { covered: 1, total: 1, percent: 60.6,  goal:  50, met: true, missing: false } },
-        { path: 'b', lines: { covered: 1, total: 1, percent: 60.63, goal:  50, met: true, missing: false } },
-        { path: 'c', lines: { covered: 1, total: 1, percent: 100,   goal: 100, met: true, missing: false } },
-      ],
-    };
-    const expected = dedent`
-      # Coverage:
-      #
-      # ok - 50%  line coverage goal (got 60.6%)  | a
-      # ok - 50%  line coverage goal (got 60.63%) | b
-      # ok - 100% line coverage goal (got 100%)   | c`;
-    assert(XTestCliCoverage.formatCoverageBlock({ result }) === expected);
+    assert(result.results[0].lines.percent === 33.33);
+    assert(result.results[0].lines.met === true);
   });
 });
 
@@ -296,11 +245,11 @@ suite('XTestCliCoverage.synthesizeMissingEntries', () => {
       goals:   { './src/onDisk.js': { lines: 80 } },
     });
     assert(graded.ok === false);
-    assert(graded.rows[0].lines.missing === false);
-    assert(graded.rows[0].lines.covered === 0);
-    assert(graded.rows[0].lines.total === 2);
-    assert(graded.rows[0].lines.percent === 0);
-    assert(graded.rows[0].lines.met === false);
+    assert(graded.results[0].lines.missing === false);
+    assert(graded.results[0].lines.covered === 0);
+    assert(graded.results[0].lines.total === 2);
+    assert(graded.results[0].lines.percent === 0);
+    assert(graded.results[0].lines.met === false);
   });
 });
 

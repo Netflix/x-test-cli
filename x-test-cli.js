@@ -372,7 +372,7 @@ if (coverage && rawCoverageEntries && tap.result.ok) {
       goals:   options.coverageGoals,
     });
     coverageOk = graded.ok;
-    tap.writeCoverage(XTestCliCoverage.formatCoverageBlock({ result: graded }), { ok: graded.ok });
+    tap.writeCoverage(graded.results);
   } catch (error) {
     tap.write('Bail out! Coverage processing failed.');
     console.error(error); // eslint-disable-line no-console
