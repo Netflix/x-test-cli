@@ -76,21 +76,20 @@ export class XTestCliCoverage {
   }
 
   /**
-   * Grade the configured `targets` against the collected V8 `entries`. Targets
+   * Grade the configured `goals` against the collected V8 `entries`. Goal paths
    * are resolved against `origin` (the test URL’s origin) using the standard
-   * URL-base algorithm, so `'./src/foo.js'` maps to
-   * `http://<origin>/src/foo.js` — which is exactly the form V8 reports for
-   * scripts served by the test harness.
+   * URL-base algorithm, `'./src/foo.js'` maps to `http://<origin>/src/foo.js` —
+   * which is exactly the form V8 reports for the served scripts.
    *
-   * Returns `{ ok, rows }`. `ok` is true iff every target met its goal.
+   * Returns `{ ok, rows }`. `ok` is true iff every goal was met.
    */
-  static gradeCoverage({ entries, origin, targets }) {
+  static gradeCoverage({ entries, origin, goals }) {
     // Duplicate entries (same URL, different executions) merge into one so a
     //  file loaded twice is graded on the union of its observed coverage, not
     //  on whichever execution happened to be first in the list.
-    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, targets);
+    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
     const rows = [];
-    for (const [path, spec] of Object.entries(targets)) {
+    for (const [path, spec] of Object.entries(goals)) {
       const resolvedUrl = new URL(path, origin + '/').href;
       const entry = prepared.find(item => item.url === resolvedUrl);
       if (!entry) {
@@ -127,21 +126,21 @@ export class XTestCliCoverage {
   }
 
   /**
-   * Produce synthetic V8-shape entries for `coverageTargets` that the browser
+   * Produce synthetic V8-shape entries for `coverageGoals` that the browser
    * never loaded but which exist on disk. This lets a file listed in config but
    * not actually imported by the test page fail the grading gracefully with
    * `0.0 / goal  not ok` rather than a terse “missing” notation — and also
    * makes the file show up in `lcov.info` with all lines red, which is the
    * honest signal for “you said to cover this but it never ran.”
    *
-   * Targets that match no V8 entry AND don’t exist on disk fall through to
+   * Goals that match no V8 entry AND don’t exist on disk fall through to
    * `gradeCoverage`’s `missing` path, which keeps the explicit “file not
    * found” notation for true typos in config.
    */
-  static async synthesizeMissingEntries({ entries, origin, sourceRoot, targets }) {
+  static async synthesizeMissingEntries({ entries, origin, sourceRoot, goals }) {
     const known = new Set(entries.map(item => item.url));
     const synthetic = [];
-    for (const path of Object.keys(targets ?? {})) {
+    for (const path of Object.keys(goals ?? {})) {
       const resolvedUrl = new URL(path, origin + '/').href;
       if (known.has(resolvedUrl)) {
         continue;
@@ -151,8 +150,8 @@ export class XTestCliCoverage {
         const text = await readFile(diskPath, 'utf8');
         synthetic.push({ url: resolvedUrl, text, ranges: [] });
       } catch {
-        // Target doesn’t exist on disk either — leave it to gradeCoverage’s
-        //  “missing” path so the row shows “file not found”.
+        // Goal’s file doesn’t exist on disk either — leave it to
+        //  gradeCoverage’s “missing” path so the row shows “file not found”.
       }
     }
     return synthetic;
@@ -160,7 +159,7 @@ export class XTestCliCoverage {
 
   /**
    * Write `lcov.info` into `outDir` (created if necessary). Only entries
-   * matching a `coverageTargets` URL are emitted — lcov should describe what
+   * matching a `coverageGoals` URL are emitted — lcov should describe what
    * the user asked to cover, nothing more, so editor integrations don’t show
    * coverage for test harness files or ad-hoc imports.
    *
@@ -176,11 +175,11 @@ export class XTestCliCoverage {
    *
    * Resolves to the absolute path written.
    */
-  static async writeLcov({ entries, outDir, origin, sourceRoot, targets }) {
+  static async writeLcov({ entries, outDir, origin, sourceRoot, goals }) {
     const dir = resolvePath(outDir);
     await mkdir(dir, { recursive: true });
     const path = resolvePath(dir, 'lcov.info');
-    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, targets);
+    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
     await writeFile(path, XTestCliCoverage.#formatLcov(prepared, { origin, sourceRoot }));
     return path;
   }
@@ -435,7 +434,7 @@ export class XTestCliCoverage {
   }
 
   /**
-   * Narrow `entries` to just the URLs named in `coverageTargets` (if any) and
+   * Narrow `entries` to just the URLs named in `coverageGoals` (if any) and
    * collapse duplicate-URL entries into one with the union of their ranges.
    *
    * The deduping matters because V8 emits a separate entry per script load — a
@@ -444,13 +443,13 @@ export class XTestCliCoverage {
    * overlapping spans: `#coverageMap` ORs them together, so any overlap is
    * already handled correctly at the byte level.
    */
-  static #filterAndMerge(entries, origin, targets) {
-    const targetUrls = (targets && origin)
-      ? new Set(Object.keys(targets).map(path => new URL(path, origin + '/').href))
+  static #filterAndMerge(entries, origin, goals) {
+    const goalUrls = (goals && origin)
+      ? new Set(Object.keys(goals).map(path => new URL(path, origin + '/').href))
       : null;
     const byUrl = new Map();
     for (const entry of entries) {
-      if (targetUrls && !targetUrls.has(entry.url)) {
+      if (goalUrls && !goalUrls.has(entry.url)) {
         continue;
       }
       const existing = byUrl.get(entry.url);

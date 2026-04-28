@@ -62,5 +62,5 @@ The bump script automatically updates `package.json`, `package-lock.json`, and `
 - ES modules (`"type": "module"` in package.json)
 - Kebab-case CLI args are converted to camelCase internally (e.g., `--name-pattern` → `namePattern`)
 - TAP output flows through stdout; errors and notes through stderr
-- Exit codes: 0 = all pass (incl. coverage goals), 1 = test failure / coverage miss / bail / crash, 2 = invocation error (bad config, e.g. `--coverage=true` without `coverageTargets`)
+- Exit codes: 0 = all pass (incl. coverage goals), 1 = test failure / coverage miss / bail / crash, 2 = invocation error (bad config, e.g. `--coverage=true` without `coverageGoals`)
 - All publishable files listed in `package.json` "files" array

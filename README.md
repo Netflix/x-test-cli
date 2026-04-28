@@ -56,6 +56,11 @@ x-test — run TAP-compliant browser tests from the command line
                                 not met. See “COVERAGE” below. Default: false.
                                 Only supported with chromium-based clients.
 
+    --root <path>               Disk side of the URL origin — the directory the dev
+                                server serves at “/”. Used to resolve “coverageGoals”
+                                keys on disk. Must be “./”- or “../”-prefixed (e.g.
+                                --root=./build). Default: cwd.
+
     --name-pattern <regex>      Regex pattern to filter tests by name. Tests whose
                                 full path (file > describe > … > it) does not
                                 match are skipped.
@@ -72,19 +77,23 @@ x-test — run TAP-compliant browser tests from the command line
 
   CONFIG FILE
     If ./x-test.config.js exists in the current working directory, it is loaded
-    automatically. CLI flags override config values. Coverage file paths are
-    resolved relative to url origin.
+    automatically. CLI flags override config values.
+
+    `root` is the resource root of the URL origin — the directory the dev
+    server serves at `/`. `coverageGoals` keys are paths inside that root, so
+    they're simultaneously root-relative on disk and origin-relative as URLs
+    (the dev server mirrors the two). Both must be `./`- or `../`-prefixed.
 
       export default {
         url:      'http://127.0.0.1:8080/test/',
+        root:     './src',
         client:   'playwright',
         browser:  'chromium',
         timeout:  30_000,
         coverage: true,
-        coverageBasePath: './public',
-        coverageTargets: {
-          './browser/x-test.js':           { lines: 100 },
-          './browser/x-test-root.js':      { lines: 71 },
+        coverageGoals: {
+          './elements/emoji-picker.js':     { lines: 100 },
+          './elements/subscribe-button.js': { lines:  71 },
         },
       };
 
@@ -190,16 +199,16 @@ supported key:
 ```js
 // x-test.config.js
 export default {
-  // OPTIONAL — disk directory the web server serves as its root.
-  //  `coverageTargets` keys resolve against this on disk. Defaults to
-  //  `process.cwd()`. Set it when the server root isn't cwd (e.g. when
-  //  serving `./public` or `./dist`).
-  coverageBasePath: './public',
+  // OPTIONAL — resource root of the URL origin: the directory the dev server
+  //  serves at `/`. Used to resolve `coverageGoals` keys on disk. Defaults to
+  //  `process.cwd()`. Must be `./`- or `../`-prefixed.
+  root:     './src',
 
-  // REQUIRED when `--coverage=true`. Per-file line-coverage goals.
-  //  Keys are paths relative to `coverageBasePath`. Values are `{ lines: N }`
-  //  where N is the minimum percent (0–100) required for the run to pass.
-  coverageTargets: {
+  // REQUIRED when `--coverage=true`. Per-file line-coverage goals. Keys are
+  //  paths inside `root` — equivalently, the URL path the dev server serves
+  //  the file at. Values are `{ lines: N }` where N is the minimum percent
+  //  (0–100) required for the run to pass.
+  coverageGoals: {
     './src/foo.js':        { lines: 100 },
     './src/bar.js':        { lines:  80 },
     './src/flaky-util.js': { lines:  60 },
@@ -215,7 +224,7 @@ Behavior of each target:
   file is read from disk to give a real denominator, and appears in
   `lcov.info` as all-red so the gap is visible in editor integrations.
 - **In config and not on disk** → `(missing)`, exit 1. Catches typos.
-- `--coverage=true` without any `coverageTargets` is an invocation error
+- `--coverage=true` without any `coverageGoals` is an invocation error
   (exit code `2`).
 
 #### Pragmas
@@ -261,7 +270,7 @@ The TAP summary shows got vs. goal per target:
 
 Coverage uses V8's view of the loaded scripts, so paths and line numbers
 have to match source on disk. Bundlers, minifiers, and TypeScript emit
-rewrite both — `coverageTargets` won't resolve and `lcov.info` line
+rewrite both — `coverageGoals` won't resolve and `lcov.info` line
 numbers won't line up. This feature is intended for small, non-transpiled
 library packages.
 
@@ -283,7 +292,7 @@ environment variables.
 - `0` — all tests passed (and, when `--coverage=true`, all coverage goals met).
 - `1` — a test failed, the plan didn’t match the asserts seen, the browser
   emitted a `Bail out!`, the driver crashed, or a coverage goal was missed.
-- `2` — invocation error (e.g., `--coverage=true` without `coverageTargets`
+- `2` — invocation error (e.g., `--coverage=true` without `coverageGoals`
   in `x-test.config.js`).
 
 ## Configuring Playwright
