@@ -1,0 +1,12 @@
+/* Linked stylesheet — exercises the standard `<link rel="stylesheet">`
+   path through CSS rule-usage tracking. The `h1` rule matches the page's
+   `<h1>` element so its bytes report as used; the `.unused` rule has no
+   match in the page, so its bytes report as not used. */
+
+h1 {
+  color: rebeccapurple;
+}
+
+.unused {
+  color: hotpink;
+}

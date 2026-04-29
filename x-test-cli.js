@@ -36,11 +36,12 @@ x-test — run TAP-compliant browser tests from the command line
                                 (required, or set in x-test.config.js)
 
   OPTIONS
-    --coverage <boolean>        Collect JS coverage via Chromium DevTools. Compares
-                                against goals defined in the config file and emits a
-                                diagnostic block after the run. Exits non-zero if a goal is
-                                not met. See “COVERAGE” below. Default: false.
-                                Only supported with chromium-based clients.
+    --coverage <boolean>        Collect JS and CSS coverage via Chromium DevTools.
+                                Compares against goals defined in the config file
+                                and emits a diagnostic block after the run. Exits
+                                non-zero if a goal is not met. See “COVERAGE”
+                                below. Default: false. Only supported with
+                                chromium-based clients.
 
     --root <path>               Resource root of the URL origin — the directory the
                                 dev server serves at “/”. Used to resolve
@@ -89,8 +90,14 @@ x-test — run TAP-compliant browser tests from the command line
     auto-disabled when “--name-pattern” is set — the numbers would only
     reflect the filtered subset of tests and misgrade the goals.
 
+    The “coverageGoals” keys may target either JS or CSS files (or any path
+    served by the dev server); the same { lines } axis applies to both.
+    JS coverage comes from V8; CSS coverage comes from Chromium’s
+    rule-usage tracker — both are reported as line percentages.
+
     The following pragmas (matching “node:coverage” patterns) are
-    available and will be adhered to during coverage assessment:
+    available and will be adhered to during coverage assessment.
+    Block-comment syntax means they apply to JS and CSS alike:
 
       /* x-test:coverage disable */
       // ... region omitted from the report
@@ -347,14 +354,13 @@ try {
 let coverageOk = true;
 if (coverage && rawCoverageEntries && tap.result.ok) {
   try {
-    const origin = new URL(url).origin;
     // Synthesize entries for goal files the browser never loaded but that
     //  exist on disk — so the summary shows `0.0 / goal  not ok` with a real
     //  denominator and lcov shows the file all-red, rather than a terse
     //  “missing” notation.
     const synthetic = await XTestCliCoverage.synthesizeMissingEntries({
       entries: rawCoverageEntries,
-      origin,
+      baseUrl,
       sourceRoot,
       goals:   options.coverageGoals,
     });
@@ -362,13 +368,13 @@ if (coverage && rawCoverageEntries && tap.result.ok) {
     await XTestCliCoverage.writeLcov({
       entries: allEntries,
       outDir:  './coverage',
-      origin,                          // In-origin entries map to on-disk paths.
+      baseUrl,                         // In-origin entries map to on-disk paths.
       sourceRoot,
       goals:   options.coverageGoals,  // Only goal files appear in lcov.
     });
     const graded = XTestCliCoverage.gradeCoverage({
       entries: allEntries,
-      origin,
+      baseUrl,
       goals:   options.coverageGoals,
     });
     coverageOk = graded.ok;

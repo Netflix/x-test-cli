@@ -3,7 +3,9 @@
  * browser console line through `onConsole(text)`, awaits `ended` (the caller’s
  * signal that the TAP stream has terminated — typically a Promise resolved by
  * the TAP parser when it sees a top-level plan or `Bail out!`), surfaces V8
- * coverage via `onCoverage(entries)`, and closes.
+ * and CSS coverage via `onCoverage(entries)`, and closes. Entries are tagged
+ * with `kind` (`'js'` or `'css'`) so downstream merging can disambiguate the
+ * (theoretical) case of one URL appearing in both collectors.
  */
 export class XTestCliBrowserPuppeteer {
   static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
@@ -27,7 +29,10 @@ export class XTestCliBrowserPuppeteer {
       });
 
       if (coverage) {
-        await page.coverage.startJSCoverage();
+        await Promise.all([
+          page.coverage.startJSCoverage(),
+          page.coverage.startCSSCoverage(),
+        ]);
       }
 
       await page.setExtraHTTPHeaders({ Accept: 'text/html' });
@@ -39,9 +44,17 @@ export class XTestCliBrowserPuppeteer {
       await ended;
 
       if (coverage) {
-        // Puppeteer already emits `{text, ranges}` — no normalization needed.
-        const js = await page.coverage.stopJSCoverage();
-        onCoverage(js);
+        // Puppeteer already emits `{text, ranges}` for both JS and CSS — no
+        //  normalization needed. Tag with `kind` and concatenate.
+        const [js, css] = await Promise.all([
+          page.coverage.stopJSCoverage(),
+          page.coverage.stopCSSCoverage(),
+        ]);
+        const tagged = [
+          ...js.map(entry  => ({ ...entry, kind: 'js'  })),
+          ...css.map(entry => ({ ...entry, kind: 'css' })),
+        ];
+        onCoverage(tagged);
       }
     } finally {
       await browser.close();
@@ -79,7 +92,10 @@ export class XTestCliBrowserPlaywright {
       });
 
       if (coverage) {
-        await page.coverage.startJSCoverage();
+        await Promise.all([
+          page.coverage.startJSCoverage(),
+          page.coverage.startCSSCoverage(),
+        ]);
       }
 
       await page.setExtraHTTPHeaders({ Accept: 'text/html' });
@@ -91,9 +107,15 @@ export class XTestCliBrowserPlaywright {
       await ended;
 
       if (coverage) {
-        const raw = await page.coverage.stopJSCoverage();
-        const js = XTestCliBrowserPlaywright.normalizeCoverage(raw);
-        onCoverage(js);
+        const [rawJs, rawCss] = await Promise.all([
+          page.coverage.stopJSCoverage(),
+          page.coverage.stopCSSCoverage(),
+        ]);
+        const js  = XTestCliBrowserPlaywright.normalizeCoverage(rawJs)
+          .map(entry => ({ ...entry, kind: 'js' }));
+        const css = XTestCliBrowserPlaywright.normalizeCssCoverage(rawCss)
+          .map(entry => ({ ...entry, kind: 'css' }));
+        onCoverage([...js, ...css]);
       }
     } finally {
       await browser.close();
@@ -119,6 +141,22 @@ export class XTestCliBrowserPlaywright {
       }
       return { url, scriptId, text: source, ranges: XTestCliBrowserPlaywright.convertToDisjointRanges(nested) };
     });
+  }
+
+  /**
+   * Pass Playwright’s raw CSS coverage through with a defensive shape copy.
+   * Playwright already emits `{url, text, ranges:[{start, end}]}` — same
+   * shape as Puppeteer’s CSS coverage — so unlike `normalizeCoverage`
+   * (which has to flatten V8’s nested function ranges) this is just a
+   * shallow remap that drops any extra fields and guards against a
+   * missing `ranges` array.
+   */
+  static normalizeCssCoverage(entries) {
+    return entries.map(({ url, text, ranges }) => ({
+      url,
+      text,
+      ranges: (ranges ?? []).map(range => ({ start: range.start, end: range.end })),
+    }));
   }
 
   /**

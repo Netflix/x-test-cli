@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- CSS coverage. `coverageGoals` keys may now target `.css` files alongside
+  `.js`; same `{ lines }` axis, same `lcov.info` output. Block-comment lines are
+  stripped from the CSS denominator (#29).
+
 ## [1.0.0-rc.7] - 2026-04-28
 
 ### Changed

@@ -35,6 +35,13 @@ export default [
     ...common,
   },
   {
+    // Browser-side integration test fixtures — run inside Chromium, not Node,
+    //  so they need browser globals (`document`, `window`, …) instead.
+    files: ['test/browser/**/*.js'],
+    languageOptions: { globals: globals.browser },
+    ...common,
+  },
+  {
     ignores: ['node_modules'],
   },
 ];
