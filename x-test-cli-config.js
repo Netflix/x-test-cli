@@ -2,12 +2,24 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
- * Loads and validates `x-test.config.js`. All methods are static — nothing
- * stateful lives here, just the config filename and the axis-name allowlists
- * that gate `coverageGoals` entries.
+ * Loads, validates, and resolves x-test CLI configuration. The pipeline is
+ *
+ *   1. `parseCli(argv)`            — argv → camelCase string-valued options.
+ *   2. `load(cwd)`                 — read x-test.config.js (object | {}).
+ *   3. `validateConfig(config)`    — strict shape check on the config object.
+ *   4. `validateCli(cli)`          — strict shape check on the CLI options.
+ *   5. `resolve({ config, cli, … })` — merge (CLI > config), default, coerce,
+ *                                     and derive (baseUrl, sourceRoot, color,
+ *                                     name-pattern URL injection) exactly once.
+ *
+ * All methods are static; nothing stateful lives here.
  */
 export class XTestCliConfig {
   static #CONFIG_FILE_NAME = 'x-test.config.js';
+
+  static #SUPPORTED_CLIENTS   = ['puppeteer', 'playwright'];
+  static #SUPPORTED_BROWSERS  = ['chromium'];
+  static #SUPPORTED_REPORTERS = ['tap', 'auto'];
 
   // Axes recognized in `coverageGoals[path]` entries. Only `lines` is graded
   //  in this increment; the other names exist so we can reject them loudly
@@ -20,15 +32,23 @@ export class XTestCliConfig {
   //  bare/absolute/`./`-prefixed paths in their config.
   static #RELATIVE_PREFIXES = ['./', '../'];
 
-  /** Common guard: reject anything that isn't a `./`- or `../`-prefixed string. */
-  static #assertRelative(value, label) {
-    if (typeof value !== 'string' || value === '') {
-      throw new Error(`${label} must be a non-empty string, got ${XTestCliConfig.#describe(value)}.`);
-    }
-    if (!XTestCliConfig.#RELATIVE_PREFIXES.some(p => value.startsWith(p))) {
-      throw new Error(`${label} must be a relative path starting with './' or '../', got ${JSON.stringify(value)}.`);
-    }
-  }
+  // Strict allowlists. Unknown keys throw rather than no-op so typos like
+  //  `coverageGoal` fail loud at startup instead of silently disabling
+  //  coverage grading.
+  static #CONFIG_KEYS = [
+    'url', 'root', 'client', 'browser', 'timeout',
+    'coverage', 'coverageGoals', 'namePattern', 'reporter',
+  ];
+
+  // CLI flags allowed on the command line (camelCase form). `coverageGoals`
+  //  is config-only — too unwieldy to express as a flag value.
+  static #CLI_KEYS = [
+    'url', 'root', 'client', 'browser', 'timeout',
+    'coverage', 'namePattern', 'reporter',
+  ];
+
+  static #DEFAULT_TIMEOUT  = 30_000;
+  static #DEFAULT_REPORTER = 'auto';
 
   /**
    * Load `x-test.config.js` from `cwd`. Returns the module's default export,
@@ -49,27 +69,202 @@ export class XTestCliConfig {
   }
 
   /**
-   * Validate `root` — the disk directory the dev server serves as its root.
-   * Used both to resolve `coverageGoals` keys against disk and to rewrite
-   * stack-trace URLs in synthesized failure output. Must be a `./`- or
-   * `../`-prefixed string when present; bare names and absolute paths fail
-   * loud so output formatting stays consistent across consumers.
+   * Parse `process.argv.slice(2)` into a camelCase options object. Syntactic
+   * checks only (must be `--key=value`, kebab→camel for the key); allowlist
+   * and value-shape checks live in `validateCli`. `--help` and `--version`
+   * are intercepted by the entry script before this is called.
    */
-  static validateRoot(root) {
-    if (root === undefined) {
-      return;
+  static parseCli(argv) {
+    const options = {};
+    for (const arg of argv) {
+      if (!arg.startsWith('--')) {
+        throw new Error(`Invalid argument "${arg}". All arguments must start with "--".`);
+      }
+      const [key, value] = arg.slice(2).split('=', 2);
+      if (value === undefined) {
+        throw new Error(`Argument "--${key}" requires a value (e.g., "--${key}=<value>").`);
+      }
+      // kebab-case flag → camelCase internal key, e.g. `name-pattern` → `namePattern`.
+      const camelKey = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      options[camelKey] = value;
     }
-    XTestCliConfig.#assertRelative(root, 'root');
+    return options;
   }
 
   /**
-   * Validate `coverageGoals` shape. Throws with a path-qualified message on
-   * the first problem found. Keys must be `./`- or `../`-prefixed paths;
-   * values accept only `{ lines: <number 0..100> }`. Unknown axes throw "not
-   * yet supported" so future additions are a deliberate choice, not a silent
-   * config drift.
+   * Validate the parsed `x-test.config.js` default export. Throws on the
+   * first problem found. Empty/missing config (`{}`) is accepted.
    */
-  static validateCoverageGoals(goals) {
+  static validateConfig(config) {
+    if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+      throw new Error(`x-test.config.js default export must be an object, got ${XTestCliConfig.#describe(config)}.`);
+    }
+    for (const key of Object.keys(config)) {
+      if (!XTestCliConfig.#CONFIG_KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#CONFIG_KEYS.map(k => `"${k}"`).join(', ');
+        throw new Error(`Unknown config key "${key}" in x-test.config.js. Allowed: ${allowed}.`);
+      }
+    }
+    if (config.url !== undefined) {
+      XTestCliConfig.#assertUrl(config.url, 'config.url');
+    }
+    if (config.root !== undefined) {
+      XTestCliConfig.#assertRelative(config.root, 'config.root');
+    }
+    if (config.client !== undefined) {
+      XTestCliConfig.#assertEnum(config.client, XTestCliConfig.#SUPPORTED_CLIENTS, 'config.client');
+    }
+    if (config.browser !== undefined) {
+      XTestCliConfig.#assertEnum(config.browser, XTestCliConfig.#SUPPORTED_BROWSERS, 'config.browser');
+    }
+    if (config.timeout !== undefined) {
+      if (typeof config.timeout !== 'number' || !Number.isFinite(config.timeout) || config.timeout <= 0) {
+        throw new Error(`config.timeout must be a positive finite number, got ${XTestCliConfig.#describe(config.timeout)}.`);
+      }
+    }
+    if (config.coverage !== undefined && typeof config.coverage !== 'boolean') {
+      throw new Error(`config.coverage must be a boolean, got ${XTestCliConfig.#describe(config.coverage)}.`);
+    }
+    if (config.namePattern !== undefined) {
+      if (typeof config.namePattern !== 'string' || config.namePattern === '') {
+        throw new Error(`config.namePattern must be a non-empty string, got ${XTestCliConfig.#describe(config.namePattern)}.`);
+      }
+    }
+    if (config.reporter !== undefined) {
+      XTestCliConfig.#assertEnum(config.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, 'config.reporter');
+    }
+    XTestCliConfig.#validateCoverageGoals(config.coverageGoals);
+  }
+
+  /**
+   * Validate the parsed CLI options. All values are strings (since they come
+   * from `--key=value`); boolean/number coercion happens in `resolve`, not
+   * here.
+   */
+  static validateCli(cli) {
+    for (const key of Object.keys(cli)) {
+      if (!XTestCliConfig.#CLI_KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#CLI_KEYS.map(k => `"--${XTestCliConfig.#kebab(k)}"`).join(', ');
+        throw new Error(`Unknown argument "--${XTestCliConfig.#kebab(key)}". Allowed: ${allowed}.`);
+      }
+    }
+    if (cli.url !== undefined) {
+      XTestCliConfig.#assertUrl(cli.url, '--url');
+    }
+    if (cli.root !== undefined) {
+      XTestCliConfig.#assertRelative(cli.root, '--root');
+    }
+    if (cli.client !== undefined) {
+      XTestCliConfig.#assertEnum(cli.client, XTestCliConfig.#SUPPORTED_CLIENTS, '--client');
+    }
+    if (cli.browser !== undefined) {
+      XTestCliConfig.#assertEnum(cli.browser, XTestCliConfig.#SUPPORTED_BROWSERS, '--browser');
+    }
+    if (cli.timeout !== undefined) {
+      const parsed = Number(cli.timeout);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw new Error(`--timeout must be a positive number of milliseconds, got "${cli.timeout}".`);
+      }
+    }
+    if (cli.coverage !== undefined && cli.coverage !== 'true' && cli.coverage !== 'false') {
+      throw new Error(`--coverage must be "true" or "false", got "${cli.coverage}".`);
+    }
+    if (cli.namePattern !== undefined && cli.namePattern === '') {
+      throw new Error('--name-pattern must be a non-empty string.');
+    }
+    if (cli.reporter !== undefined) {
+      XTestCliConfig.#assertEnum(cli.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, '--reporter');
+    }
+  }
+
+  /**
+   * Merge config and CLI (CLI wins) and produce a fully-resolved options
+   * object. Defaults, type coercions, and derived values (`baseUrl`,
+   * `sourceRoot`, `color`, name-pattern URL injection) are applied here
+   * exactly once. Cross-field invariants (`coverage=true ⇒ coverageGoals`,
+   * `--name-pattern ⇒ coverage off`) are enforced here too.
+   */
+  static resolve({ config, cli, cwd, env, isTTY }) {
+    const client = cli.client ?? config.client;
+    if (!client) {
+      throw new Error('"--client" is required (e.g., "--client=puppeteer").');
+    }
+    const rawUrl = cli.url ?? config.url;
+    if (!rawUrl) {
+      throw new Error('"--url" is required (e.g., "--url=http://localhost:8080/test/").');
+    }
+
+    const browser      = cli.browser     ?? config.browser;
+    const namePattern  = cli.namePattern ?? config.namePattern;
+    const root         = cli.root        ?? config.root        ?? '.';
+    const reporterMode = cli.reporter    ?? config.reporter    ?? XTestCliConfig.#DEFAULT_REPORTER;
+
+    // Coverage: CLI is "true"/"false" string, config is real boolean.
+    let coverage;
+    if (cli.coverage !== undefined) {
+      coverage = cli.coverage === 'true';
+    } else if (config.coverage !== undefined) {
+      coverage = config.coverage;
+    } else {
+      coverage = false;
+    }
+    const coverageGoals = config.coverageGoals;
+    if (coverage && !coverageGoals) {
+      throw new Error('--coverage=true requires coverageGoals in x-test.config.js.');
+    }
+    // Coverage is a full-run metric — auto-disable when filtering by name and
+    //  surface the fact via a flag so the entry script can warn the user.
+    let coverageDisabledByPattern = false;
+    if (coverage && namePattern) {
+      coverage = false;
+      coverageDisabledByPattern = true;
+    }
+
+    let runTimeout;
+    if (cli.timeout !== undefined) {
+      runTimeout = Number(cli.timeout);
+    } else if (config.timeout !== undefined) {
+      runTimeout = config.timeout;
+    } else {
+      runTimeout = XTestCliConfig.#DEFAULT_TIMEOUT;
+    }
+
+    // Apply the name-pattern as a search param on the test URL exactly once.
+    const targetUrl = new URL(rawUrl);
+    if (namePattern) {
+      targetUrl.searchParams.set('x-test-name-pattern', namePattern);
+    }
+    const baseUrl    = targetUrl.origin + '/';
+    const sourceRoot = resolve(cwd, root) + '/';
+
+    // Color resolution. Precedence (highest first):
+    //   1. `--reporter=tap`         → forces raw (explicit user intent).
+    //   2. `NO_COLOR`               → https://no-color.org
+    //   3. `FORCE_COLOR`            → ecosystem de facto.
+    //   4. TTY detection on stdout.
+    const suppressColor = reporterMode === 'tap' || env.NO_COLOR;
+    const forceColor    = env.FORCE_COLOR || isTTY;
+    const color         = !suppressColor && !!forceColor;
+
+    return {
+      client,                     // 'puppeteer' | 'playwright'
+      browser,                    // 'chromium' | undefined
+      url: targetUrl.href,        // includes ?x-test-name-pattern when set
+      coverage,                   // boolean, false when namePattern present
+      coverageGoals,              // object | undefined
+      coverageDisabledByPattern,  // true when namePattern overrode coverage
+      namePattern,                // string | undefined
+      runTimeout,                 // number, ms
+      reporterMode,               // 'tap' | 'auto'
+      color,                      // boolean
+      baseUrl,                    // origin + '/'
+      sourceRoot,                 // absolute dir + '/'
+      cwd: cwd + '/',
+    };
+  }
+
+  /** Validate the `coverageGoals` sub-object. See class doc for shape. */
+  static #validateCoverageGoals(goals) {
     if (goals === undefined) {
       return;
     }
@@ -94,6 +289,41 @@ export class XTestCliConfig {
         throw new Error(`coverageGoals[${JSON.stringify(path)}].lines must be a number in [0, 100], got ${XTestCliConfig.#describe(lines)}.`);
       }
     }
+  }
+
+  /** Common guard: reject anything that isn't a `./`- or `../`-prefixed string. */
+  static #assertRelative(value, label) {
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(`${label} must be a non-empty string, got ${XTestCliConfig.#describe(value)}.`);
+    }
+    if (!XTestCliConfig.#RELATIVE_PREFIXES.some(p => value.startsWith(p))) {
+      throw new Error(`${label} must be a relative path starting with './' or '../', got ${JSON.stringify(value)}.`);
+    }
+  }
+
+  /** Common guard: reject anything that isn't a parseable URL string. */
+  static #assertUrl(value, label) {
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(`${label} must be a non-empty string, got ${XTestCliConfig.#describe(value)}.`);
+    }
+    try {
+      new URL(value);
+    } catch {
+      throw new Error(`${label} must be a valid URL, got ${JSON.stringify(value)}.`);
+    }
+  }
+
+  /** Common guard: reject anything not in the given allowlist. */
+  static #assertEnum(value, allowed, label) {
+    if (!allowed.includes(value)) {
+      const list = allowed.map(v => `"${v}"`).join(', ');
+      throw new Error(`${label} must be one of ${list}, got ${JSON.stringify(value)}.`);
+    }
+  }
+
+  /** camelCase → kebab-case for friendly CLI error messages. */
+  static #kebab(camel) {
+    return camel.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
   }
 
   /** Human-readable type description for error messages. */
