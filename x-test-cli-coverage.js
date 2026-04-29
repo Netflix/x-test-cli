@@ -21,6 +21,8 @@ export class XTestCliCoverage {
   static #CODE_FORMFEED = 0x0c; // '\f'
   static #CODE_LF       = 0x0a; // '\n'
   static #CODE_CR       = 0x0d; // '\r'
+  static #CODE_SLASH    = 0x2f; // '/'
+  static #CODE_STAR     = 0x2a; // '*'
 
   /**
    * Per-line coverage for a single V8 entry.
@@ -46,11 +48,18 @@ export class XTestCliCoverage {
    * numerator and the denominator.
    */
   static computeLineHits(entry) {
-    const { text, ranges } = entry;
+    const { text, ranges, kind } = entry;
     const spans = XTestCliCoverage.#lineSpans(text);
     const lines = spans.map(([s, e]) => text.slice(s, e));
     const ignored = XTestCliCoverage.#parsePragmas(lines);
     const covered = XTestCliCoverage.#coverageMap(text.length, ranges);
+    // CSS rule-usage tracking only marks matched-rule byte ranges as used,
+    //  so lines that are entirely inside `/* ... */` block comments would
+    //  otherwise drag the denominator down without ever being counted as
+    //  covered. Strip them here, the same way blank lines and pragma-ignored
+    //  lines are stripped. JS doesn't need this — V8's executed-scope ranges
+    //  already cover comment bytes — so the mask is built only for CSS.
+    const commentMask = kind === 'css' ? XTestCliCoverage.#cssCommentMask(text) : null;
 
     const hitMap = new Map();
     let total = 0;
@@ -64,8 +73,11 @@ export class XTestCliCoverage {
       if (XTestCliCoverage.#isBlank(lines[index])) {
         continue;
       }
+      if (commentMask && XTestCliCoverage.#isAllCommentOrBlank(text, spans[index], commentMask)) {
+        continue;
+      }
       total++;
-      const state = XTestCliCoverage.#classifyLine(text, spans[index], covered);
+      const state = XTestCliCoverage.#classifyLine(text, spans[index], covered, commentMask);
       if (state === 'full') {
         hits++;
       }
@@ -77,20 +89,20 @@ export class XTestCliCoverage {
 
   /**
    * Grade the configured `goals` against the collected V8 `entries`. Goal paths
-   * are resolved against `origin` (the test URL’s origin) using the standard
-   * URL-base algorithm, `'./src/foo.js'` maps to `http://<origin>/src/foo.js` —
-   * which is exactly the form V8 reports for the served scripts.
+   * are resolved against `baseUrl` (the test URL’s origin with trailing `/`)
+   * using the standard URL-base algorithm, so `'./src/foo.js'` maps to
+   * `<baseUrl>src/foo.js` — exactly the form V8 reports for the served scripts.
    *
    * Returns `{ ok, results }`. `ok` is true iff every goal was met.
    */
-  static gradeCoverage({ entries, origin, goals }) {
+  static gradeCoverage({ entries, baseUrl, goals }) {
     // Duplicate entries (same URL, different executions) merge into one so a
     //  file loaded twice is graded on the union of its observed coverage, not
     //  on whichever execution happened to be first in the list.
-    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
+    const prepared = XTestCliCoverage.#filterAndMerge(entries, baseUrl, goals);
     const results = [];
     for (const [path, spec] of Object.entries(goals)) {
-      const resolvedUrl = new URL(path, origin + '/').href;
+      const resolvedUrl = new URL(path, baseUrl).href;
       const entry = prepared.find(item => item.url === resolvedUrl);
       if (!entry) {
         results.push({
@@ -137,18 +149,21 @@ export class XTestCliCoverage {
    * `gradeCoverage`’s `missing` path, which keeps the explicit “file not
    * found” notation for true typos in config.
    */
-  static async synthesizeMissingEntries({ entries, origin, sourceRoot, goals }) {
+  static async synthesizeMissingEntries({ entries, baseUrl, sourceRoot, goals }) {
     const known = new Set(entries.map(item => item.url));
     const synthetic = [];
     for (const path of Object.keys(goals ?? {})) {
-      const resolvedUrl = new URL(path, origin + '/').href;
+      const resolvedUrl = new URL(path, baseUrl).href;
       if (known.has(resolvedUrl)) {
         continue;
       }
       const diskPath = resolvePath(sourceRoot, path);
       try {
         const text = await readFile(diskPath, 'utf8');
-        synthetic.push({ url: resolvedUrl, text, ranges: [] });
+        // `kind` defaults to `'js'`. Synthesized entries always carry empty
+        //  ranges, so the value only matters as the merge-key suffix in
+        //  `#filterAndMerge`; default is correct for any non-collision case.
+        synthetic.push({ url: resolvedUrl, text, ranges: [], kind: 'js' });
       } catch {
         // Goal’s file doesn’t exist on disk either — leave it to
         //  gradeCoverage’s “missing” path so the row shows “file not found”.
@@ -168,19 +183,19 @@ export class XTestCliCoverage {
    * each targeted file appears once in `lcov.info`, with the union of all
    * observed covered ranges.
    *
-   * `origin` and `sourceRoot` together produce filesystem paths in `SF:`
+   * `baseUrl` and `sourceRoot` together produce filesystem paths in `SF:`
    * records (what lcov consumers like VSCode Coverage Gutters expect). Paths
    * are emitted **relative to `sourceRoot`** so the report stays portable
    * across machines and CI uploads.
    *
    * Resolves to the absolute path written.
    */
-  static async writeLcov({ entries, outDir, origin, sourceRoot, goals }) {
+  static async writeLcov({ entries, outDir, baseUrl, sourceRoot, goals }) {
     const dir = resolvePath(outDir);
     await mkdir(dir, { recursive: true });
     const path = resolvePath(dir, 'lcov.info');
-    const prepared = XTestCliCoverage.#filterAndMerge(entries, origin, goals);
-    await writeFile(path, XTestCliCoverage.#formatLcov(prepared, { origin, sourceRoot }));
+    const prepared = XTestCliCoverage.#filterAndMerge(entries, baseUrl, goals);
+    await writeFile(path, XTestCliCoverage.#formatLcov(prepared, { sourceRoot }));
     return path;
   }
 
@@ -279,17 +294,21 @@ export class XTestCliCoverage {
   }
 
   /**
-   * Three-state classification of a line, ignoring whitespace bytes. Returns
-   * `'full'` when every non-whitespace byte lies in a covered range, `'none'`
-   * when none do, and `'partial'` when the line straddles the boundary (e.g.,
-   * a one-line `if / else` where only one branch ran).
+   * Three-state classification of a line, ignoring whitespace bytes — and,
+   * when a `commentMask` is supplied, bytes that fall inside CSS block
+   * comments. Returns `'full'` when every significant byte lies in a covered
+   * range, `'none'` when none do, and `'partial'` when the line straddles
+   * the boundary (e.g., a one-line `if / else` where only one branch ran).
    */
-  static #classifyLine(text, span, covered) {
+  static #classifyLine(text, span, covered, commentMask) {
     const [start, end] = span;
     let anyCovered   = false;
     let anyUncovered = false;
     for (let index = start; index < end; index++) {
       if (XTestCliCoverage.#isWhitespaceCode(text.charCodeAt(index))) {
+        continue;
+      }
+      if (commentMask && commentMask[index]) {
         continue;
       }
       if (covered[index]) {
@@ -302,6 +321,65 @@ export class XTestCliCoverage {
       }
     }
     return anyCovered ? 'full' : 'none';
+  }
+
+  /**
+   * True iff every byte on `[span.start, span.end)` is whitespace or part of
+   * a CSS block comment per `commentMask`. Used to drop comment-only lines
+   * from the denominator the same way `#isBlank` drops whitespace-only lines.
+   */
+  static #isAllCommentOrBlank(text, span, commentMask) {
+    const [start, end] = span;
+    for (let index = start; index < end; index++) {
+      if (XTestCliCoverage.#isWhitespaceCode(text.charCodeAt(index))) {
+        continue;
+      }
+      if (commentMask[index]) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Build a byte-mask for CSS block comments: `mask[i] === 1` iff char `i`
+   * lies within a slash-star … star-slash span (markers themselves
+   * included). CSS has no line-comment syntax and no nested comments, so
+   * the algorithm is a simple scan for an opener and the next closer.
+   * Unterminated comments mark to end of text — defensive, since
+   * unterminated comments are also a parse error for the browser, but
+   * harmless here either way.
+   *
+   * Strings (`"…"` / `'…'`) are not tracked. CSS rarely embeds comment
+   * markers inside string values, and the worst case if it ever happens is
+   * over-stripping — at most a line or two excluded that arguably shouldn't
+   * be. Not worth the parser complexity to handle precisely.
+   */
+  static #cssCommentMask(text) {
+    const mask = new Uint8Array(text.length);
+    let index = 0;
+    while (index < text.length - 1) {
+      if (text.charCodeAt(index) === XTestCliCoverage.#CODE_SLASH
+        && text.charCodeAt(index + 1) === XTestCliCoverage.#CODE_STAR) {
+        let close = index + 2;
+        while (close < text.length - 1) {
+          if (text.charCodeAt(close) === XTestCliCoverage.#CODE_STAR
+            && text.charCodeAt(close + 1) === XTestCliCoverage.#CODE_SLASH) {
+            break;
+          }
+          close++;
+        }
+        const stop = close < text.length - 1 ? close + 2 : text.length;
+        for (let mark = index; mark < stop; mark++) {
+          mask[mark] = 1;
+        }
+        index = stop;
+      } else {
+        index++;
+      }
+    }
+    return mask;
   }
 
   static #isWhitespaceCode(code) {
@@ -333,7 +411,7 @@ export class XTestCliCoverage {
    *
    * Whitespace-only and pragma-ignored lines are omitted from all records.
    */
-  static #formatLcov(entries, { origin, sourceRoot } = {}) {
+  static #formatLcov(entries, { sourceRoot }) {
     const records = [];
     for (const entry of entries) {
       const hits = XTestCliCoverage.computeLineHits(entry);
@@ -366,7 +444,7 @@ export class XTestCliCoverage {
 
       const body = [
         'TN:',
-        `SF:${XTestCliCoverage.#sourceFile(entry.url, origin, sourceRoot)}`,
+        `SF:${XTestCliCoverage.#sourceFile(entry.url, sourceRoot)}`,
         ...daRecords,
         `LF:${lineTotal}`,
         `LH:${lineHits}`,
@@ -389,51 +467,48 @@ export class XTestCliCoverage {
    * records per targeted file. We concatenate ranges without merging
    * overlapping spans: `#coverageMap` ORs them together, so any overlap is
    * already handled correctly at the byte level.
+   *
+   * Merge key is `(url, kind)` rather than `url` alone so the (theoretical)
+   * case of a single URL producing both JS and CSS coverage entries — e.g. a
+   * CSS module script — keeps the two streams separate. Each kind grades and
+   * renders independently in lcov.
    */
-  static #filterAndMerge(entries, origin, goals) {
-    const goalUrls = (goals && origin)
-      ? new Set(Object.keys(goals).map(path => new URL(path, origin + '/').href))
+  static #filterAndMerge(entries, baseUrl, goals) {
+    const goalUrls = (goals && baseUrl)
+      ? new Set(Object.keys(goals).map(path => new URL(path, baseUrl).href))
       : null;
-    const byUrl = new Map();
+    const byKey = new Map();
     for (const entry of entries) {
       if (goalUrls && !goalUrls.has(entry.url)) {
         continue;
       }
-      const existing = byUrl.get(entry.url);
+      const key = `${entry.url}::${entry.kind}`;
+      const existing = byKey.get(key);
       if (existing) {
         existing.ranges = existing.ranges.concat(entry.ranges);
       } else {
-        byUrl.set(entry.url, { url: entry.url, text: entry.text, ranges: [...entry.ranges] });
+        const { url, text, ranges, kind } = entry;
+        byKey.set(key, { url, text, ranges: [...ranges], kind });
       }
     }
-    return [...byUrl.values()];
+    return [...byKey.values()];
   }
 
   /**
-   * Map a V8 entry URL to the `SF:` value for its lcov record. When the URL
-   * shares `origin`, return a filesystem path **relative to `sourceRoot`** —
-   * the convention every major lcov consumer (Codecov, Coveralls, SonarQube,
-   * VSCode Coverage Gutters, genhtml) expects, since absolute paths break when
-   * `lcov.info` is moved between machines or uploaded from CI. Cross-origin
-   * entries — or entries whose URL parses awkwardly — fall back to the URL
-   * verbatim so the record stays unambiguous.
+   * Map a V8 entry URL to the `SF:` value for its lcov record: a filesystem
+   * path **relative to `sourceRoot`** — the convention every major lcov
+   * consumer expects, since absolute paths break when `lcov.info` is moved
+   * between machines or uploaded from CI.
+   *
+   * Entries reaching this function are always same-origin with `baseUrl`:
+   * `#filterAndMerge` only retains entries whose URLs are in the goal-URL
+   * set, and goal URLs are constructed from `coverageGoals` keys (relative
+   * paths) resolved against `baseUrl`.
    */
-  static #sourceFile(url, origin, sourceRoot) {
-    if (!origin || !sourceRoot) {
-      return url;
-    }
-    let parsed;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return url;
-    }
-    if (parsed.origin !== origin) {
-      return url;
-    }
+  static #sourceFile(url, sourceRoot) {
     // Decode %xx escapes so on-disk filenames match, then strip the leading
     //  `/` so the path joins cleanly under `sourceRoot`.
-    const decoded = decodeURIComponent(parsed.pathname).replace(/^\/+/, '');
+    const decoded = decodeURIComponent(new URL(url).pathname).replace(/^\/+/, '');
     return relativePath(sourceRoot, resolvePath(sourceRoot, decoded));
   }
 }

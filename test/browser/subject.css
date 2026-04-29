@@ -1,0 +1,13 @@
+/* CSS-module-script stylesheet — imported from subject.js via
+   `import sheet from './subject.css' with { type: 'css' }` and adopted
+   onto the document. Exercises the constructed-stylesheet path through
+   CSS rule-usage tracking. The `body` rule matches; `#never-rendered`
+   does not. */
+
+body {
+  background: papayawhip;
+}
+
+#never-rendered {
+  background: tomato;
+}

@@ -91,6 +91,51 @@ suite('XTestCliBrowserPlaywright.normalizeCoverage', () => {
   });
 });
 
+suite('XTestCliBrowserPlaywright.normalizeCssCoverage', () => {
+  test('preserves url, text, and {start, end} ranges', () => {
+    const input = [{
+      url: 'http://example/a.css',
+      text: 'a { color: red; }',
+      ranges: [{ start: 0, end: 17 }],
+    }];
+    const [entry] = XTestCliBrowserPlaywright.normalizeCssCoverage(input);
+    assert(entry.url === 'http://example/a.css');
+    assert(entry.text === 'a { color: red; }');
+    assert.deepEqual(entry.ranges, [{ start: 0, end: 17 }]);
+  });
+
+  test('handles missing ranges array', () => {
+    const input = [{ url: 'u', text: 'x' }];
+    const [entry] = XTestCliBrowserPlaywright.normalizeCssCoverage(input);
+    assert.deepEqual(entry.ranges, []);
+  });
+
+  test('handles empty input', () => {
+    assert.deepEqual(XTestCliBrowserPlaywright.normalizeCssCoverage([]), []);
+  });
+
+  test('handles multiple ranges within an entry', () => {
+    const input = [{
+      url: 'u', text: 'abcdefghij',
+      ranges: [{ start: 0, end: 3 }, { start: 5, end: 7 }],
+    }];
+    const [entry] = XTestCliBrowserPlaywright.normalizeCssCoverage(input);
+    assert.deepEqual(entry.ranges, [
+      { start: 0, end: 3 },
+      { start: 5, end: 7 },
+    ]);
+  });
+
+  test('drops extra fields on ranges (defensive shape copy)', () => {
+    const input = [{
+      url: 'u', text: 'x',
+      ranges: [{ start: 0, end: 1, extra: 'unexpected' }],
+    }];
+    const [entry] = XTestCliBrowserPlaywright.normalizeCssCoverage(input);
+    assert.deepEqual(entry.ranges, [{ start: 0, end: 1 }]);
+  });
+});
+
 suite('XTestCliBrowserPlaywright.convertToDisjointRanges', () => {
   test('single covered range passes through', () => {
     const out = XTestCliBrowserPlaywright.convertToDisjointRanges([

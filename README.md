@@ -50,11 +50,12 @@ x-test — run TAP-compliant browser tests from the command line
                                 (required, or set in x-test.config.js)
 
   OPTIONS
-    --coverage <boolean>        Collect JS coverage via Chromium DevTools. Compares
-                                against goals defined in the config file and emits a
-                                diagnostic block after the run. Exits non-zero if a goal is
-                                not met. See “COVERAGE” below. Default: false.
-                                Only supported with chromium-based clients.
+    --coverage <boolean>        Collect JS and CSS coverage via Chromium DevTools.
+                                Compares against goals defined in the config file
+                                and emits a diagnostic block after the run. Exits
+                                non-zero if a goal is not met. See “COVERAGE”
+                                below. Default: false. Only supported with
+                                chromium-based clients.
 
     --root <path>               Disk side of the URL origin — the directory the dev
                                 server serves at “/”. Used to resolve “coverageGoals”
@@ -103,8 +104,14 @@ x-test — run TAP-compliant browser tests from the command line
     auto-disabled when “--name-pattern” is set — the numbers would only
     reflect the filtered subset of tests and misgrade the goals.
 
+    “coverageGoals” keys may target either JS or CSS files (or any path
+    served by the dev server); the same { lines } axis applies to both.
+    JS coverage comes from V8; CSS coverage comes from Chromium’s
+    rule-usage tracker — both are reported as line percentages.
+
     The following pragmas (matching “node:coverage” patterns) are
-    available and will be adhered to during coverage assessment:
+    available and will be adhered to during coverage assessment.
+    Block-comment syntax means they apply to JS and CSS alike:
 
       /* x-test:coverage disable */
       // ... region omitted from the report
@@ -185,10 +192,11 @@ browser-side runner via the `x-test-name-pattern` URL query param.
 
 ### Coverage
 
-When `--coverage=true`, the CLI collects V8 JS coverage via Chromium's DevTools
-Protocol, grades per-file goals declared in `x-test.config.js`, writes
-`./coverage/lcov.info`, and appends a `# Coverage:` diagnostic block to the
-TAP output.
+When `--coverage=true`, the CLI collects V8 JS coverage and CSS rule-usage
+coverage via Chromium's DevTools Protocol, grades per-file goals declared in
+`x-test.config.js`, writes `./coverage/lcov.info`, and appends a `# Coverage:`
+diagnostic block to the TAP output. JS and CSS files share the same
+`{ lines }` goal axis, so a single `coverageGoals` map can mix both.
 
 #### Config file
 
@@ -212,6 +220,7 @@ export default {
     './src/foo.js':        { lines: 100 },
     './src/bar.js':        { lines:  80 },
     './src/flaky-util.js': { lines:  60 },
+    './src/styles.css':    { lines:  90 },
   },
 };
 ```
