@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- JSDoc-based TypeScript checking. `tsc --noEmit` runs over the Node source
+  via `npm run type` (also wired into CI). No `.d.ts` files are emitted —
+  the package’s interface is the binary, so types stay internal (#21).
 - CSS coverage. `coverageGoals` keys may now target `.css` files alongside
   `.js`; same `{ lines }` axis, same `lcov.info` output. Block-comment lines are
   stripped from the CSS denominator (#29).

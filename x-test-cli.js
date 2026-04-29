@@ -128,8 +128,13 @@ x-test — run TAP-compliant browser tests from the command line
     https://github.com/Netflix/x-test
     https://github.com/Netflix/x-test-cli`;
 
-// Exit code 2 is reserved for invocation errors — the request itself is
-//  malformed. Distinct from 1 (a passing-but-not-ok run) and 0 (success).
+/**
+ * Exit code 2 is reserved for invocation errors — the request itself is
+ * malformed. Distinct from 1 (a passing-but-not-ok run) and 0 (success).
+ * @param {string} message
+ * @param {number} [code]
+ * @returns {never}
+ */
 function fail(message, code = 1) {
   console.error(message); // eslint-disable-line no-console
   process.exit(code);
@@ -152,6 +157,7 @@ if (args.includes('--version')) {
 
 // Validate config, validate CLI, merge (CLI > config), resolve everything once.
 //  Any failure in this block is an invocation error → exit 2.
+/** @type {ReturnType<typeof XTestCliConfig.resolve>} */
 let resolved;
 try {
   const cliOptions    = XTestCliConfig.parseCli(args);
@@ -166,7 +172,7 @@ try {
     isTTY:  process.stdout.isTTY,
   });
 } catch (error) {
-  fail(`Error: ${error.message}`, 2);
+  fail(`Error: ${error instanceof Error ? error.message : String(error)}`, 2);
 }
 
 if (resolved.coverageDisabledByPattern) {
@@ -177,6 +183,7 @@ if (resolved.coverageDisabledByPattern) {
 //  reporter auto-ends when it parses a terminal TAP line (top-level plan
 //  satisfied, or `Bail out!`); we bridge that to the driver via `streamEnded`,
 //  so the driver knows when to stop collecting coverage and close the browser.
+/** @type {PromiseWithResolvers<void>} */
 const { promise: streamEnded, resolve: endStream } = Promise.withResolvers();
 const tap = new XTestCliTap({
   stream:     process.stdout,
@@ -194,8 +201,10 @@ const LAUNCH_TIMEOUT_MS = 10_000;
 
 // Captures the raw V8 coverage the driver collects so we can grade it after
 //  the run. Populated only when `coverage === true`.
+/** @type {import('./x-test-cli-coverage.js').CoverageEntry[] | null} */
 let rawCoverageEntries = null;
 
+/** @type {import('./x-test-cli-browser.js').DriverOptions} */
 const driverOptions = {
   url:           resolved.url,
   coverage:      resolved.coverage,
@@ -205,12 +214,21 @@ const driverOptions = {
   ended:         streamEnded,
 };
 
-// Global run timeout. Races the driver against a timer — covers launch,
-//  navigation, handshake, and coverage uniformly. The losing promise keeps
-//  running, but we `process.exit(1)` below and the driver packages install
-//  exit handlers that tear down Chromium.
+/**
+ * Global run timeout. Races the driver against a timer — covers launch,
+ * navigation, handshake, and coverage uniformly. The losing promise keeps
+ * running, but we `process.exit(1)` below and the driver packages install
+ * exit handlers that tear down Chromium.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} message
+ * @returns {Promise<T>}
+ */
 function withTimeout(promise, ms, message) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
+  /** @type {Promise<T>} */
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(message)), ms);
   });

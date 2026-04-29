@@ -1,6 +1,37 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { relative as relativePath, resolve as resolvePath } from 'node:path';
 
+/** @typedef {import('./x-test-cli-config.js').CoverageGoals} CoverageGoals */
+
+/** @typedef {{ start: number, end: number }} CoverageRange */
+
+/**
+ * @typedef {object} CoverageEntry
+ * @property {string} url
+ * @property {string} text
+ * @property {CoverageRange[]} ranges
+ * @property {'js' | 'css'} kind
+ */
+
+/** @typedef {'full' | 'partial' | 'none'} LineState */
+
+/**
+ * @typedef {object} LineHits
+ * @property {number} total
+ * @property {number} covered
+ * @property {Map<number, LineState>} hitMap
+ * @property {Set<number>} ignoredLines
+ */
+
+/**
+ * @typedef {object} CoverageGradeRow
+ * @property {string} path
+ * @property {string} resolvedUrl
+ * @property {{ covered: number, total: number, percent: number, goal: number, met: boolean, missing: boolean }} lines
+ */
+
+/** @typedef {{ ok: boolean, results: CoverageGradeRow[] }} CoverageGradeResult */
+
 /**
  * Coverage pipeline: V8 entries → per-line classification → grading +
  * lcov.info + TAP summary.
@@ -46,6 +77,8 @@ export class XTestCliCoverage {
    *
    * Whitespace-only lines and pragma-ignored lines are excluded from both the
    * numerator and the denominator.
+   * @param {CoverageEntry} entry
+   * @returns {LineHits}
    */
   static computeLineHits(entry) {
     const { text, ranges, kind } = entry;
@@ -94,8 +127,20 @@ export class XTestCliCoverage {
    * `<baseUrl>src/foo.js` — exactly the form V8 reports for the served scripts.
    *
    * Returns `{ ok, results }`. `ok` is true iff every goal was met.
+   * @param {object} input
+   * @param {CoverageEntry[]} input.entries
+   * @param {string} input.baseUrl
+   * @param {CoverageGoals | undefined} input.goals
+   * @returns {CoverageGradeResult}
    */
   static gradeCoverage({ entries, baseUrl, goals }) {
+    if (!goals) {
+      // Unreachable from the entry script: `XTestCliConfig.resolve()` rejects
+      //  `coverage=true` without `coverageGoals`, and the entry only calls
+      //  this when `coverage` is on. Throw so a contract-breaking caller
+      //  fails loudly instead of getting a silent ok-empty result.
+      throw new Error('XTestCliCoverage.gradeCoverage: goals is required.');
+    }
     // Duplicate entries (same URL, different executions) merge into one so a
     //  file loaded twice is graded on the union of its observed coverage, not
     //  on whichever execution happened to be first in the list.
@@ -148,9 +193,16 @@ export class XTestCliCoverage {
    * Goals that match no V8 entry AND don’t exist on disk fall through to
    * `gradeCoverage`’s `missing` path, which keeps the explicit “file not
    * found” notation for true typos in config.
+   * @param {object} input
+   * @param {CoverageEntry[]} input.entries
+   * @param {string} input.baseUrl
+   * @param {string} input.sourceRoot
+   * @param {CoverageGoals | undefined} input.goals
+   * @returns {Promise<CoverageEntry[]>}
    */
   static async synthesizeMissingEntries({ entries, baseUrl, sourceRoot, goals }) {
     const known = new Set(entries.map(item => item.url));
+    /** @type {CoverageEntry[]} */
     const synthetic = [];
     for (const path of Object.keys(goals ?? {})) {
       const resolvedUrl = new URL(path, baseUrl).href;
@@ -189,6 +241,13 @@ export class XTestCliCoverage {
    * across machines and CI uploads.
    *
    * Resolves to the absolute path written.
+   * @param {object} input
+   * @param {CoverageEntry[]} input.entries
+   * @param {string} input.outDir
+   * @param {string} input.baseUrl
+   * @param {string} input.sourceRoot
+   * @param {CoverageGoals | undefined} input.goals
+   * @returns {Promise<string>}
    */
   static async writeLcov({ entries, outDir, baseUrl, sourceRoot, goals }) {
     const dir = resolvePath(outDir);
@@ -204,8 +263,11 @@ export class XTestCliCoverage {
    * offset is exclusive and does not include the line terminator — spans are
    * the line’s payload bytes only. Handles `\n`, `\r\n`, and lone `\r`
    * delimiters. Trailing line with no terminator is included.
+   * @param {string} text
+   * @returns {[number, number][]}
    */
   static #lineSpans(text) {
+    /** @type {[number, number][]} */
     const spans = [];
     let start = 0;
     for (let index = 0; index < text.length; index++) {
@@ -229,6 +291,9 @@ export class XTestCliCoverage {
    * Build a boolean character-map: `covered[i] === 1` iff character `i` in the
    * source text falls in at least one range. Puppeteer delivers disjoint
    * `{start, end}` ranges so no merging is needed.
+   * @param {number} length
+   * @param {CoverageRange[]} ranges
+   * @returns {Uint8Array}
    */
   static #coverageMap(length, ranges) {
     const map = new Uint8Array(length);
@@ -250,6 +315,8 @@ export class XTestCliCoverage {
    * `disable`/`enable` bracket a region. `ignore next N` applies to the next
    * N non-pragma lines — pragma lines inside the window don’t consume the
    * counter, which keeps `disable` inside `ignore next N` from double-counting.
+   * @param {string[]} lines
+   * @returns {Set<number>}
    */
   static #parsePragmas(lines) {
     const ignored = new Set();
@@ -283,7 +350,11 @@ export class XTestCliCoverage {
     return ignored;
   }
 
-  /** True iff the line contains only whitespace (by `#isWhitespaceCode`). */
+  /**
+   * True iff the line contains only whitespace (by `#isWhitespaceCode`).
+   * @param {string} line
+   * @returns {boolean}
+   */
   static #isBlank(line) {
     for (let index = 0; index < line.length; index++) {
       if (!XTestCliCoverage.#isWhitespaceCode(line.charCodeAt(index))) {
@@ -299,6 +370,11 @@ export class XTestCliCoverage {
    * comments. Returns `'full'` when every significant byte lies in a covered
    * range, `'none'` when none do, and `'partial'` when the line straddles
    * the boundary (e.g., a one-line `if / else` where only one branch ran).
+   * @param {string} text
+   * @param {[number, number]} span
+   * @param {Uint8Array} covered
+   * @param {Uint8Array | null} commentMask
+   * @returns {LineState}
    */
   static #classifyLine(text, span, covered, commentMask) {
     const [start, end] = span;
@@ -327,6 +403,10 @@ export class XTestCliCoverage {
    * True iff every byte on `[span.start, span.end)` is whitespace or part of
    * a CSS block comment per `commentMask`. Used to drop comment-only lines
    * from the denominator the same way `#isBlank` drops whitespace-only lines.
+   * @param {string} text
+   * @param {[number, number]} span
+   * @param {Uint8Array} commentMask
+   * @returns {boolean}
    */
   static #isAllCommentOrBlank(text, span, commentMask) {
     const [start, end] = span;
@@ -355,6 +435,8 @@ export class XTestCliCoverage {
    * markers inside string values, and the worst case if it ever happens is
    * over-stripping — at most a line or two excluded that arguably shouldn't
    * be. Not worth the parser complexity to handle precisely.
+   * @param {string} text
+   * @returns {Uint8Array}
    */
   static #cssCommentMask(text) {
     const mask = new Uint8Array(text.length);
@@ -382,6 +464,10 @@ export class XTestCliCoverage {
     return mask;
   }
 
+  /**
+   * @param {number} code
+   * @returns {boolean}
+   */
   static #isWhitespaceCode(code) {
     return code === XTestCliCoverage.#CODE_SPACE
       || code === XTestCliCoverage.#CODE_TAB
@@ -389,7 +475,11 @@ export class XTestCliCoverage {
       || code === XTestCliCoverage.#CODE_FORMFEED;
   }
 
-  /** Two decimal places, rounded. */
+  /**
+   * Two decimal places, rounded.
+   * @param {number} value
+   * @returns {number}
+   */
   static #roundTwo(value) {
     return Math.round(value * 100) / 100;
   }
@@ -410,6 +500,9 @@ export class XTestCliCoverage {
    * summary is separate — see `gradeCoverage`.
    *
    * Whitespace-only and pragma-ignored lines are omitted from all records.
+   * @param {CoverageEntry[]} entries
+   * @param {{ sourceRoot: string }} options
+   * @returns {string}
    */
   static #formatLcov(entries, { sourceRoot }) {
     const records = [];
@@ -472,6 +565,10 @@ export class XTestCliCoverage {
    * case of a single URL producing both JS and CSS coverage entries — e.g. a
    * CSS module script — keeps the two streams separate. Each kind grades and
    * renders independently in lcov.
+   * @param {CoverageEntry[]} entries
+   * @param {string | undefined} baseUrl
+   * @param {CoverageGoals | undefined} goals
+   * @returns {CoverageEntry[]}
    */
   static #filterAndMerge(entries, baseUrl, goals) {
     const goalUrls = (goals && baseUrl)
@@ -504,6 +601,9 @@ export class XTestCliCoverage {
    * `#filterAndMerge` only retains entries whose URLs are in the goal-URL
    * set, and goal URLs are constructed from `coverageGoals` keys (relative
    * paths) resolved against `baseUrl`.
+   * @param {string} url
+   * @param {string} sourceRoot
+   * @returns {string}
    */
   static #sourceFile(url, sourceRoot) {
     // Decode %xx escapes so on-disk filenames match, then strip the leading
