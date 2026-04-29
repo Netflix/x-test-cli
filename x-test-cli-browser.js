@@ -1,3 +1,47 @@
+/** @typedef {import('./x-test-cli-coverage.js').CoverageRange} CoverageRange */
+
+/** @typedef {import('./x-test-cli-coverage.js').CoverageEntry} CoverageEntry */
+
+/** @typedef {{ startOffset: number, endOffset: number, count: number }} V8FunctionRange */
+
+/**
+ * @typedef {object} V8FunctionCoverage
+ * @property {V8FunctionRange[]} [ranges]
+ */
+
+/**
+ * Raw V8 coverage entry as Playwright reports it (one record per executed
+ * script). Puppeteer's stop-coverage shape is different — see `CoverageEntry`.
+ * `source` is typed optional to match Playwright's own declarations; in
+ * practice the script tag is always set, so `normalizeCoverage` doesn't guard.
+ * @typedef {object} PlaywrightV8Entry
+ * @property {string} url
+ * @property {string} scriptId
+ * @property {string} [source]
+ * @property {V8FunctionCoverage[]} [functions]
+ */
+
+/**
+ * Raw CSS coverage entry from Playwright. Same shape as Puppeteer's CSS
+ * coverage, so the normalizer is mostly a defensive shape copy. `text` is
+ * typed optional to match Playwright's own declarations.
+ * @typedef {object} PlaywrightCssEntry
+ * @property {string} url
+ * @property {string} [text]
+ * @property {CoverageRange[]} [ranges]
+ */
+
+/**
+ * @typedef {object} DriverOptions
+ * @property {string} url
+ * @property {boolean} coverage
+ * @property {Record<string, unknown>} [launchOptions]
+ * @property {number} launchTimeout
+ * @property {(text: string) => void} onConsole
+ * @property {(entries: CoverageEntry[]) => void} onCoverage
+ * @property {Promise<unknown>} ended
+ */
+
 /**
  * Puppeteer driver. `run(options)` launches Chromium via puppeteer, wires each
  * browser console line through `onConsole(text)`, awaits `ended` (the caller’s
@@ -8,6 +52,10 @@
  * (theoretical) case of one URL appearing in both collectors.
  */
 export class XTestCliBrowserPuppeteer {
+  /**
+   * @param {DriverOptions} options
+   * @returns {Promise<void>}
+   */
   static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
     let puppeteer;
     try {
@@ -50,9 +98,10 @@ export class XTestCliBrowserPuppeteer {
           page.coverage.stopJSCoverage(),
           page.coverage.stopCSSCoverage(),
         ]);
+        /** @type {CoverageEntry[]} */
         const tagged = [
-          ...js.map(entry  => ({ ...entry, kind: 'js'  })),
-          ...css.map(entry => ({ ...entry, kind: 'css' })),
+          ...js.map(entry  => ({ ...entry, kind: /** @type {const} */ ('js')  })),
+          ...css.map(entry => ({ ...entry, kind: /** @type {const} */ ('css') })),
         ];
         onCoverage(tagged);
       }
@@ -71,6 +120,10 @@ export class XTestCliBrowserPuppeteer {
  * `onCoverage(entries)`, and closes.
  */
 export class XTestCliBrowserPlaywright {
+  /**
+   * @param {DriverOptions} options
+   * @returns {Promise<void>}
+   */
   static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
     let playwright;
     try {
@@ -112,9 +165,9 @@ export class XTestCliBrowserPlaywright {
           page.coverage.stopCSSCoverage(),
         ]);
         const js  = XTestCliBrowserPlaywright.normalizeCoverage(rawJs)
-          .map(entry => ({ ...entry, kind: 'js' }));
+          .map(entry => ({ ...entry, kind: /** @type {const} */ ('js') }));
         const css = XTestCliBrowserPlaywright.normalizeCssCoverage(rawCss)
-          .map(entry => ({ ...entry, kind: 'css' }));
+          .map(entry => ({ ...entry, kind: /** @type {const} */ ('css') }));
         onCoverage([...js, ...css]);
       }
     } finally {
@@ -130,16 +183,19 @@ export class XTestCliBrowserPlaywright {
    * branches of an executed function) are subtracted from their outer
    * `count > 0` parent. Without this step Playwright reports looser coverage
    * than Puppeteer for the same run.
+   * @param {PlaywrightV8Entry[]} entries
+   * @returns {{ url: string, scriptId: string, text: string, ranges: CoverageRange[] }[]}
    */
   static normalizeCoverage(entries) {
     return entries.map(({ url, scriptId, source, functions }) => {
+      /** @type {V8FunctionRange[]} */
       const nested = [];
       for (const fn of functions ?? []) {
         for (const range of fn.ranges ?? []) {
           nested.push(range);
         }
       }
-      return { url, scriptId, text: source, ranges: XTestCliBrowserPlaywright.convertToDisjointRanges(nested) };
+      return { url, scriptId, text: source ?? '', ranges: XTestCliBrowserPlaywright.convertToDisjointRanges(nested) };
     });
   }
 
@@ -150,11 +206,13 @@ export class XTestCliBrowserPlaywright {
    * (which has to flatten V8’s nested function ranges) this is just a
    * shallow remap that drops any extra fields and guards against a
    * missing `ranges` array.
+   * @param {PlaywrightCssEntry[]} entries
+   * @returns {{ url: string, text: string, ranges: CoverageRange[] }[]}
    */
   static normalizeCssCoverage(entries) {
     return entries.map(({ url, text, ranges }) => ({
       url,
-      text,
+      text: text ?? '',
       ranges: (ranges ?? []).map(range => ({ start: range.start, end: range.end })),
     }));
   }
@@ -167,8 +225,11 @@ export class XTestCliBrowserPlaywright {
    * events, the innermost range’s count wins — so an enclosing `count=1` scope
    * is overridden by an `count=0` inner block for that block’s extent. We emit
    * only non-zero segments and merge adjacent same-count segments on the fly.
+   * @param {V8FunctionRange[]} nested
+   * @returns {CoverageRange[]}
    */
   static convertToDisjointRanges(nested) {
+    /** @type {{ offset: number, delta: number, range: V8FunctionRange }[]} */
     const events = [];
     for (const range of nested) {
       events.push({ offset: range.startOffset, delta:  1, range });
@@ -189,7 +250,9 @@ export class XTestCliBrowserPlaywright {
       return a.delta === 1 ? lenB - lenA : lenA - lenB;
     });
 
+    /** @type {V8FunctionRange[]} */
     const stack    = [];
+    /** @type {{ start: number, end: number, count: number }[]} */
     const segments = [];
     let lastOffset = 0;
     for (const event of events) {

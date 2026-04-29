@@ -1,5 +1,6 @@
 import globals from 'globals';
 import js from '@eslint/js';
+import jsdoc from 'eslint-plugin-jsdoc';
 
 const common = {
   rules: {
@@ -40,6 +41,40 @@ export default [
     files: ['test/browser/**/*.js'],
     languageOptions: { globals: globals.browser },
     ...common,
+  },
+  {
+    ...jsdoc.configs['flat/recommended'],
+    files: [
+      'x-test-cli.js',
+      'x-test-cli-browser.js',
+      'x-test-cli-config.js',
+      'x-test-cli-coverage.js',
+      'x-test-cli-tap.js',
+    ],
+    rules: {
+      ...jsdoc.configs['flat/recommended'].rules,
+      // We use JSDoc for `tsc --noEmit` checking, not as a documentation
+      //  contract. Don't require humans to repeat the obvious — turn off the
+      //  prose-required-everywhere rules, keep the ones that catch real bugs
+      //  (mismatched / undefined types).
+      'jsdoc/require-jsdoc':                'off',
+      'jsdoc/require-param-description':    'off',
+      'jsdoc/require-returns-description':  'off',
+      'jsdoc/require-property-description': 'off',
+      'jsdoc/require-returns':              'off',
+    },
+  },
+  {
+    settings: {
+      jsdoc: {
+        preferredTypes: [
+          // TypeScript knows about these, but eslint does not.
+          'NodeJS.ErrnoException',
+          'PromiseWithResolvers',
+          'RegExpExecArray',
+        ],
+      },
+    },
   },
   {
     ignores: ['node_modules'],

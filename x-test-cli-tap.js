@@ -1,3 +1,22 @@
+/** @typedef {import('./x-test-cli-coverage.js').CoverageGradeRow} CoverageGradeRow */
+
+/**
+ * @typedef {object} TapResult
+ * @property {boolean} ok
+ * @property {number} testOk
+ * @property {number} testNotOk
+ * @property {number} testSkip
+ * @property {number} testTodoOk
+ * @property {number} testTodoNotOk
+ * @property {number} testCount
+ * @property {number | null} planStart
+ * @property {number | null} planEnd
+ * @property {boolean} bailed
+ * @property {string | null} bailReason
+ */
+
+/** @typedef {{ breadcrumb: string[], stackLines: string[] }} PendingFailure */
+
 /**
  * Single authority for TAP interpretation, result accumulation, and rendering.
  */
@@ -44,34 +63,57 @@ export class XTestCliTap {
     cyan:    '\x1b[36m',
   };
 
+  /** @type {{ write: (chunk: string) => unknown }} */
   #stream;
+  /** @type {boolean} */
   #color;
+  /** @type {(() => void) | undefined} */
   #endStream;
   // All three carry a trailing `/` — caller's contract. `#rewriteUrl` chains
   //  substring substitutions and a missing slash would corrupt the output.
+  /** @type {string} */
   #baseUrl;                             // URL prefix — paired with `#sourceRoot` to project stack-line URLs to disk paths
+  /** @type {string} */
   #sourceRoot;                          // absolute fs path — the disk projection of `#baseUrl`
+  /** @type {string} */
   #cwd;                                 // absolute fs path — output paths render relative to this
+  /** @type {string[]} */
   #parents          = [];               // currently-active subtest names: pushed on `# Subtest:`, popped on the inner `1..N` plan that closes it
+  /** @type {PendingFailure[]} */
   #failures         = [];               // accumulated `{ breadcrumb, stackLines }` — drained by `#finalize`
+  /** @type {PendingFailure | null} */
   #pendingFailure   = null;             // set on a leaf `not ok`; promoted to `#failures` on yamlClose iff we collected stack lines
+  /** @type {number | null} */
   #stackIndent      = null;             // strip column for stack lines, set when `yamlStackKey` fires inside a pendingFailure's yaml
   #state = {
-    started:        false, // flipped true on `TAP version N`; gates all parsing
-    inYaml:         false, // classification mode flag — inside a `---`/`...` block
-    ended:          false, // set by terminal TAP line; gates write/result
-    result:         null,  // frozen snapshot produced at end-of-stream
-    planStart:      null,  // lower bound of the `N..M` plan (null = no plan seen)
-    planEnd:        null,  // upper bound of the `N..M` plan
-    testOk:         0,     // plain `ok` asserts
-    testNotOk:      0,     // plain `not ok` asserts (drives exit code)
-    testSkip:       0,     // `ok # SKIP` asserts
-    testTodoOk:     0,     // `ok # TODO` asserts (unexpectedly passing)
-    testTodoNotOk:  0,     // `not ok # TODO` asserts (expected failures)
-    bailed:         false, // set on encountering a Bail out! line
-    bailReason:     null,  // free text after `Bail out!`, if any
+    started:        false,                  // flipped true on `TAP version N`; gates all parsing
+    inYaml:         false,                  // classification mode flag — inside a `---`/`...` block
+    ended:          false,                  // set by terminal TAP line; gates write/result
+    /** @type {TapResult | null} */
+    result:         null,                   // frozen snapshot produced at end-of-stream
+    /** @type {number | null} */
+    planStart:      null,                   // lower bound of the `N..M` plan (null = no plan seen)
+    /** @type {number | null} */
+    planEnd:        null,                   // upper bound of the `N..M` plan
+    testOk:         0,                      // plain `ok` asserts
+    testNotOk:      0,                      // plain `not ok` asserts (drives exit code)
+    testSkip:       0,                      // `ok # SKIP` asserts
+    testTodoOk:     0,                      // `ok # TODO` asserts (unexpectedly passing)
+    testTodoNotOk:  0,                      // `not ok # TODO` asserts (expected failures)
+    bailed:         false,                  // set on encountering a Bail out! line
+    /** @type {string | null} */
+    bailReason:     null,                   // free text after `Bail out!`, if any
   };
 
+  /**
+   * @param {object} options
+   * @param {{ write: (chunk: string) => unknown }} options.stream
+   * @param {boolean} options.color
+   * @param {(() => void) | undefined} options.endStream
+   * @param {string} options.baseUrl
+   * @param {string} options.sourceRoot
+   * @param {string} options.cwd
+   */
   constructor({ stream, color, endStream, baseUrl, sourceRoot, cwd }) {
     this.#stream     = stream;
     this.#color      = color;
@@ -90,6 +132,7 @@ export class XTestCliTap {
    * Lines are accepted even after the stream has auto-ended — TAP allows
    * trailing diagnostics after `Bail out!` and (non-canonically) after the
    * plan. We still render them but the frozen `result` is not updated.
+   * @param {string} blob
    */
   write(blob) {
     // A trailing `\n` terminates the final line — don’t treat it as a
@@ -111,6 +154,7 @@ export class XTestCliTap {
    * this through `write()` would put it on the post-end raw-passthrough
    * path, hence the dedicated entry point. Mirrors `#emitFailureBlock`'s
    * "structured-data → comment-block" shape.
+   * @param {CoverageGradeRow[]} results
    */
   writeCoverage(results) {
     const ok = results.every(result => result.lines.met);
@@ -121,7 +165,9 @@ export class XTestCliTap {
     //   got    — "(got 60.64%)" or "(missing)"
     // Padding keeps the `| <path>` column aligned regardless of which
     //  results are missing or have short percentages.
+    /** @param {CoverageGradeRow} result */
     const statusOf = result => result.lines.met ? 'ok' : 'not ok';
+    /** @param {CoverageGradeRow} result */
     const gotOf    = result => result.lines.missing
       ? '(missing)'
       : `(got ${Number(result.lines.percent.toFixed(2))}%)`;
@@ -142,9 +188,10 @@ export class XTestCliTap {
   /**
    * Aggregated result — available once the stream has ended (auto or
    * explicit). Accessing before that is a usage error.
+   * @returns {TapResult}
    */
   get result() {
-    if (!this.#state.ended) {
+    if (!this.#state.ended || !this.#state.result) {
       throw new Error('XTestCliTap: result accessed before end().');
     }
     return this.#state.result;
@@ -168,7 +215,7 @@ export class XTestCliTap {
       ok = false;
     }
     const testCount = testOk + testNotOk + testSkip + testTodoOk + testTodoNotOk;
-    if (planEnd !== null) {
+    if (planEnd !== null && planStart !== null) {
       const planned = planEnd - planStart + 1;
       if (planned !== testCount) {
         ok = false;
@@ -224,6 +271,8 @@ export class XTestCliTap {
    * `sourceRoot` and `cwd` differ (e.g. `root: './public'` puts sourceRoot
    * one level below cwd, and output renders `public/foo.js` rather than
    * losing the `public/` prefix).
+   * @param {string} text
+   * @returns {string}
    */
   #rewriteUrl(text) {
     return text.split(this.#baseUrl).join(this.#sourceRoot).split(this.#cwd).join('');
@@ -232,6 +281,8 @@ export class XTestCliTap {
   /**
    * The single rendering path for every switch case. `style` is an ANSI opening
    * escape from `#styles` — omit it to pass the line through raw.
+   * @param {string} line
+   * @param {string} [style]
    */
   #emit(line, style) {
     const text = style && this.#color
@@ -244,6 +295,8 @@ export class XTestCliTap {
    * Find the pattern that classifies `line`. State picks which set to
    * iterate; each set ends in a catch-all sentinel (`unknown`, `yamlUnknown`)
    * so a hit is guaranteed.
+   * @param {string} line
+   * @returns {{ pattern: RegExp, match: RegExpExecArray }}
    */
   #tryPatterns(line) {
     // Yaml mode picks the yaml set, otherwise the main set. Both end in a
@@ -255,6 +308,8 @@ export class XTestCliTap {
         return { pattern, match };
       }
     }
+    // Unreachable — every pattern set ends in a catch-all sentinel.
+    throw new Error('XTestCliTap: no pattern matched (catch-all sentinel missing).');
   }
 
   /**
@@ -262,6 +317,7 @@ export class XTestCliTap {
    * emit it through `#emit` with the style that matches its classification.
    * Every path through the switch sets `style` (or leaves it undefined for raw
    * passthrough), so the single call to `#emit` at the end renders uniformly.
+   * @param {string} line
    */
   #processLine(line) {
     // Only top-level plans and asserts feed counters; nested (indented) lines
@@ -269,6 +325,11 @@ export class XTestCliTap {
     //  don’t count them.
     const atTopLevel = !/^\s/.test(line);
     const { pattern, match } = this.#tryPatterns(line);
+    // Every named-capture pattern in `#patterns` and `#inYamlPatterns` declares
+    //  optional `(?<…>…)?` groups in TS's eyes — the runtime always populates
+    //  them once we're inside the matching arm, so cast to a non-optional
+    //  view rather than scatter `?? ''` defaults at each usage site.
+    const groups = /** @type {Record<string, string | undefined>} */ (match.groups ?? {});
 
     if (this.#state.ended) {
       // Post-end: lines that arrive after the terminal TAP line pass
@@ -291,7 +352,7 @@ export class XTestCliTap {
         break;
       case XTestCliTap.#patterns.subtest:
         // Push entering the subtest; the matching inner `1..N` plan pops.
-        this.#parents.push(match.groups.name);
+        this.#parents.push(groups.name ?? '');
         this.#pendingFailure = null;                    // rollups never trail a subtest header
         style = XTestCliTap.#styles.cyan;
         break;
@@ -327,8 +388,9 @@ export class XTestCliTap {
         //  block follows AND its `stack: |-` collects lines — that's how we
         //  distinguish a leaf from a subtest rollup like
         //  `not ok 3 - http://.../test-suite.html`.
-        const description = match.groups.description.trim();
+        const description = (groups.description ?? '').trim();
         const breadcrumb = [...this.#parents, description];
+        /** @type {string[]} */
         const stackLines = [];
         this.#pendingFailure = { breadcrumb, stackLines };
         style = XTestCliTap.#styles.red;
@@ -351,7 +413,7 @@ export class XTestCliTap {
         if (this.#pendingFailure) {
           // The block-scalar header sits at `<keyIndent>stack: |-`; lines
           //  beneath are indented by keyIndent + 2 (yaml convention).
-          this.#stackIndent = match.groups.indent.length + 2;
+          this.#stackIndent = (groups.indent ?? '').length + 2;
         }
         style = XTestCliTap.#styles.dim;
         break;
@@ -373,8 +435,8 @@ export class XTestCliTap {
         break;
       case XTestCliTap.#patterns.plan:
         if (atTopLevel) {
-          this.#state.planStart = Number(match.groups.start);
-          this.#state.planEnd   = Number(match.groups.end);
+          this.#state.planStart = Number(groups.start);
+          this.#state.planEnd   = Number(groups.end);
           this.#state.ended     = true; // Top-level plan is terminal.
         } else {
           // Inner plan closes the most recently opened subtest. Pairs with
@@ -386,7 +448,7 @@ export class XTestCliTap {
         break;
       case XTestCliTap.#patterns.bail:
         this.#state.bailed = true;
-        this.#state.bailReason = match.groups.reason ?? null;
+        this.#state.bailReason = groups.reason ?? null;
         this.#state.ended = true; // Bail is terminal.
         style = XTestCliTap.#styles.boldRed;
         break;
