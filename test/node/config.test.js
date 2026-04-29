@@ -62,95 +62,97 @@ suite('XTestCliConfig.load', () => {
   });
 });
 
-suite('XTestCliConfig.validateRoot', () => {
-  test('undefined is a no-op', () => {
-    XTestCliConfig.validateRoot(undefined);
+suite('XTestCliConfig.validateConfig — root', () => {
+  test('absent is a no-op', () => {
+    XTestCliConfig.validateConfig({});
   });
 
   test('relative-prefixed strings pass', () => {
-    XTestCliConfig.validateRoot('./public');
-    XTestCliConfig.validateRoot('../sibling/dist');
+    XTestCliConfig.validateConfig({ root: './public' });
+    XTestCliConfig.validateConfig({ root: '../sibling/dist' });
   });
 
   test('empty string rejected', () => {
-    assert.throws(() => XTestCliConfig.validateRoot(''), /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: '' }), /non-empty string/);
   });
 
   test('absolute and bare paths rejected', () => {
     // Bare ("public") and absolute ("/abs/path") forms are rejected so output
     //  formatting stays uniform with `coverageGoals` keys (Node-style `./`).
-    assert.throws(() => XTestCliConfig.validateRoot('/abs/path'), /relative path/);
-    assert.throws(() => XTestCliConfig.validateRoot('public'),    /relative path/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: '/abs/path' }), /relative path/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: 'public' }),    /relative path/);
   });
 
   test('non-string rejected', () => {
-    assert.throws(() => XTestCliConfig.validateRoot(42),    /non-empty string/);
-    assert.throws(() => XTestCliConfig.validateRoot(null),  /non-empty string/);
-    assert.throws(() => XTestCliConfig.validateRoot({}),    /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: 42 }),   /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: null }), /non-empty string/);
+    assert.throws(() => XTestCliConfig.validateConfig({ root: {} }),   /non-empty string/);
   });
 });
 
-suite('XTestCliConfig.validateCoverageGoals', () => {
-  test('undefined is a no-op', () => {
-    XTestCliConfig.validateCoverageGoals(undefined);
+suite('XTestCliConfig.validateConfig — coverageGoals', () => {
+  test('absent is a no-op', () => {
+    XTestCliConfig.validateConfig({});
   });
 
   test('valid { lines: N } passes', () => {
-    XTestCliConfig.validateCoverageGoals({
-      './src/a.js': { lines: 100 },
-      './src/b.js': { lines: 0 },
-      './src/c.js': { lines: 50.5 },
+    XTestCliConfig.validateConfig({
+      coverageGoals: {
+        './src/a.js': { lines: 100 },
+        './src/b.js': { lines: 0 },
+        './src/c.js': { lines: 50.5 },
+      },
     });
   });
 
   test('non-object root → throws', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageGoals('nope'), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageGoals([]), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageGoals(null), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverageGoals: 'nope' }), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverageGoals: [] }),     /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverageGoals: null }),   /must be an object/);
   });
 
   test('non-object entry → throws', () => {
-    assert.throws(() => XTestCliConfig.validateCoverageGoals({ './a.js': 100 }), /must be an object/);
-    assert.throws(() => XTestCliConfig.validateCoverageGoals({ './a.js': null }), /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': 100 } }),  /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': null } }), /must be an object/);
   });
 
   test('branches/functions/statements → not yet supported', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { branches: 50 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { branches: 50 } } }),
       /'branches' not yet supported/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { functions: 90 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { functions: 90 } } }),
       /'functions' not yet supported/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { statements: 80 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { statements: 80 } } }),
       /'statements' not yet supported/,
     );
   });
 
   test('unknown axis → throws with "unknown axis"', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { nonsense: 50 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { nonsense: 50 } } }),
       /unknown axis/,
     );
   });
 
   test('lines out of range → throws', () => {
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: 150 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { lines: 150 } } }),
       /must be a number in \[0, 100\]/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: -1 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { lines: -1 } } }),
       /must be a number in \[0, 100\]/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': { lines: 'high' } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': { lines: 'high' } } }),
       /must be a number/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ './a.js': {} }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { './a.js': {} } }),
       /must be a number/,
     );
   });
@@ -159,14 +161,210 @@ suite('XTestCliConfig.validateCoverageGoals', () => {
     // Bare (`a.js`) and absolute (`/a.js`) keys are rejected so the coverage
     //  table renders Node-style relative paths uniformly with `root`.
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ 'a.js': { lines: 50 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { 'a.js': { lines: 50 } } }),
       /relative path/,
     );
     assert.throws(
-      () => XTestCliConfig.validateCoverageGoals({ '/a.js': { lines: 50 } }),
+      () => XTestCliConfig.validateConfig({ coverageGoals: { '/a.js': { lines: 50 } } }),
       /relative path/,
     );
-    XTestCliConfig.validateCoverageGoals({ './a.js':  { lines: 50 } });
-    XTestCliConfig.validateCoverageGoals({ '../b.js': { lines: 50 } });
+    XTestCliConfig.validateConfig({ coverageGoals: { './a.js':  { lines: 50 } } });
+    XTestCliConfig.validateConfig({ coverageGoals: { '../b.js': { lines: 50 } } });
+  });
+});
+
+suite('XTestCliConfig.validateConfig — top-level shape', () => {
+  test('unknown keys throw', () => {
+    assert.throws(
+      () => XTestCliConfig.validateConfig({ coverageGoal: {} }),
+      /Unknown config key "coverageGoal"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateConfig({ foo: 1 }),
+      /Unknown config key "foo"/,
+    );
+  });
+
+  test('non-object input throws', () => {
+    assert.throws(() => XTestCliConfig.validateConfig(null),  /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig([]),    /must be an object/);
+    assert.throws(() => XTestCliConfig.validateConfig('hi'),  /must be an object/);
+  });
+
+  test('client/browser/reporter enums', () => {
+    XTestCliConfig.validateConfig({ client: 'puppeteer' });
+    XTestCliConfig.validateConfig({ client: 'playwright' });
+    XTestCliConfig.validateConfig({ browser: 'chromium' });
+    XTestCliConfig.validateConfig({ reporter: 'tap' });
+    XTestCliConfig.validateConfig({ reporter: 'auto' });
+    assert.throws(() => XTestCliConfig.validateConfig({ client:   'bogus' }),  /must be one of/);
+    assert.throws(() => XTestCliConfig.validateConfig({ browser:  'firefox' }), /must be one of/);
+    assert.throws(() => XTestCliConfig.validateConfig({ reporter: 'spec' }),    /must be one of/);
+  });
+
+  test('coverage must be a real boolean', () => {
+    XTestCliConfig.validateConfig({ coverage: true });
+    XTestCliConfig.validateConfig({ coverage: false });
+    assert.throws(() => XTestCliConfig.validateConfig({ coverage: 'true' }), /must be a boolean/);
+    assert.throws(() => XTestCliConfig.validateConfig({ coverage: 1 }),      /must be a boolean/);
+  });
+
+  test('timeout must be a positive finite number', () => {
+    XTestCliConfig.validateConfig({ timeout: 1 });
+    XTestCliConfig.validateConfig({ timeout: 30_000 });
+    assert.throws(() => XTestCliConfig.validateConfig({ timeout: 0 }),       /positive finite number/);
+    assert.throws(() => XTestCliConfig.validateConfig({ timeout: -1 }),      /positive finite number/);
+    assert.throws(() => XTestCliConfig.validateConfig({ timeout: '30000' }), /positive finite number/);
+    assert.throws(() => XTestCliConfig.validateConfig({ timeout: Infinity }),/positive finite number/);
+  });
+
+  test('url must be a parseable URL string', () => {
+    XTestCliConfig.validateConfig({ url: 'http://localhost:8080/test/' });
+    assert.throws(() => XTestCliConfig.validateConfig({ url: 'not a url' }), /valid URL/);
+    assert.throws(() => XTestCliConfig.validateConfig({ url: '' }),          /non-empty string/);
+  });
+});
+
+suite('XTestCliConfig.parseCli', () => {
+  test('kebab-case keys → camelCase', () => {
+    const opts = XTestCliConfig.parseCli(['--name-pattern=foo', '--client=puppeteer']);
+    assert(opts.namePattern === 'foo');
+    assert(opts.client === 'puppeteer');
+  });
+
+  test('non--- arg throws', () => {
+    assert.throws(() => XTestCliConfig.parseCli(['bare']), /must start with "--"/);
+  });
+
+  test('flag without value throws', () => {
+    assert.throws(() => XTestCliConfig.parseCli(['--client']), /requires a value/);
+  });
+});
+
+suite('XTestCliConfig.validateCli', () => {
+  test('unknown flags throw with kebab-case in message', () => {
+    assert.throws(() => XTestCliConfig.validateCli({ foo: 'x' }),         /Unknown argument "--foo"/);
+    assert.throws(() => XTestCliConfig.validateCli({ coverageGoals: {} }), /Unknown argument "--coverage-goals"/);
+  });
+
+  test('values are strings; coverage must be "true"/"false"', () => {
+    XTestCliConfig.validateCli({ coverage: 'true' });
+    XTestCliConfig.validateCli({ coverage: 'false' });
+    assert.throws(() => XTestCliConfig.validateCli({ coverage: 'maybe' }), /must be "true" or "false"/);
+  });
+
+  test('timeout parses string', () => {
+    XTestCliConfig.validateCli({ timeout: '30000' });
+    assert.throws(() => XTestCliConfig.validateCli({ timeout: '-5' }), /positive number/);
+    assert.throws(() => XTestCliConfig.validateCli({ timeout: 'abc' }), /positive number/);
+  });
+
+  test('client/browser/reporter enums', () => {
+    assert.throws(() => XTestCliConfig.validateCli({ client:   'bogus' }),    /must be one of/);
+    assert.throws(() => XTestCliConfig.validateCli({ browser:  'firefox' }),  /must be one of/);
+    assert.throws(() => XTestCliConfig.validateCli({ reporter: 'spec' }),     /must be one of/);
+    XTestCliConfig.validateCli({ browser: 'chromium' });
+  });
+});
+
+suite('XTestCliConfig.resolve', () => {
+  const baseArgs = { cwd: '/tmp/x', env: {}, isTTY: false };
+
+  test('CLI overrides config', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: { client: 'playwright', url: 'http://a/' },
+      cli:    { client: 'puppeteer' },
+    });
+    assert(r.client === 'puppeteer');
+    assert(r.url === 'http://a/');
+  });
+
+  test('missing client/url throws', () => {
+    assert.throws(
+      () => XTestCliConfig.resolve({ ...baseArgs, config: {}, cli: { url: 'http://a/' } }),
+      /"--client" is required/,
+    );
+    assert.throws(
+      () => XTestCliConfig.resolve({ ...baseArgs, config: {}, cli: { client: 'puppeteer' } }),
+      /"--url" is required/,
+    );
+  });
+
+  test('coverage=true without coverageGoals throws', () => {
+    assert.throws(
+      () => XTestCliConfig.resolve({
+        ...baseArgs,
+        config: { coverage: true },
+        cli:    { client: 'puppeteer', url: 'http://a/' },
+      }),
+      /requires coverageGoals/,
+    );
+  });
+
+  test('namePattern disables coverage and is injected into URL', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: { coverage: true, coverageGoals: { './a.js': { lines: 50 } } },
+      cli:    { client: 'puppeteer', url: 'http://a/test/', namePattern: 'foo' },
+    });
+    assert(r.coverage === false);
+    assert(r.coverageDisabledByPattern === true);
+    assert(/x-test-name-pattern=foo/.test(r.url));
+  });
+
+  test('CLI string coverage parses to boolean', () => {
+    const t = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: { coverageGoals: { './a.js': { lines: 50 } } },
+      cli:    { client: 'puppeteer', url: 'http://a/', coverage: 'true' },
+    });
+    assert(t.coverage === true);
+    const f = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: {},
+      cli:    { client: 'puppeteer', url: 'http://a/', coverage: 'false' },
+    });
+    assert(f.coverage === false);
+  });
+
+  test('reporter=tap forces no color even on TTY', () => {
+    const r = XTestCliConfig.resolve({
+      cwd: '/tmp/x', env: {}, isTTY: true,
+      config: {}, cli: { client: 'puppeteer', url: 'http://a/', reporter: 'tap' },
+    });
+    assert(r.color === false);
+  });
+
+  test('NO_COLOR suppresses color', () => {
+    const r = XTestCliConfig.resolve({
+      cwd: '/tmp/x', env: { NO_COLOR: '1' }, isTTY: true,
+      config: {}, cli: { client: 'puppeteer', url: 'http://a/' },
+    });
+    assert(r.color === false);
+  });
+
+  test('default timeout is 30_000', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: {}, cli: { client: 'puppeteer', url: 'http://a/' },
+    });
+    assert(r.runTimeout === 30_000);
+  });
+
+  test('CLI timeout string parses to number', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: {}, cli: { client: 'puppeteer', url: 'http://a/', timeout: '5000' },
+    });
+    assert(r.runTimeout === 5000);
+  });
+
+  test('baseUrl is origin + "/"', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: {}, cli: { client: 'puppeteer', url: 'http://localhost:8080/test/sub/' },
+    });
+    assert(r.baseUrl === 'http://localhost:8080/');
   });
 });
