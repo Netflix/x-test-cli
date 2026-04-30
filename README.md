@@ -170,9 +170,11 @@ x-test --client=puppeteer --url=http://localhost:8080/test/ --name-pattern='^ren
 
 ### Playwright
 
-Playwright launches Chromium too (we hard-code the Chromium channel for parity
-with Puppeteer). You need the `playwright` package **and** the Chromium binary —
-see [Configuring Playwright](#configuring-playwright) for more details.
+Playwright supports `chromium`, `firefox`, and `webkit` via `--browser`. You
+need the `playwright` package **and** the binary for whichever browser(s) you
+plan to launch — see [Configuring Playwright](#configuring-playwright) for more
+details. Coverage is supported only with `--browser=chromium` (V8 / CSS
+coverage isn't available on Firefox or WebKit).
 
 ```bash
 # Install:
@@ -307,15 +309,17 @@ environment variables.
 ## Configuring Playwright
 
 Playwright ships as an npm package that knows *how* to drive a browser but
-doesn’t include the browser binary itself — you install those separately. The
-CLI hard-codes Chromium, so that’s what you need.
+doesn’t include the browser binary itself — you install those separately.
+Install whichever of `chromium`, `firefox`, `webkit` you intend to launch via
+`--browser`.
 
 ### One-time local setup
 
 If you just want to get started, run this once in your project:
 
 ```bash
-npx playwright install chromium
+npx playwright install chromium                  # just Chromium
+npx playwright install chromium firefox webkit   # the full matrix
 ```
 
 ### Automatic install on `npm install`
@@ -325,12 +329,13 @@ Encode in your project's `package.json` so teammates and CI can't forget:
 ```json
 {
   "scripts": {
-    "postinstall": "playwright install chromium"
+    "postinstall": "playwright install chromium firefox webkit"
   }
 }
 ```
 
-This is Playwright’s recommended pattern.
+This is Playwright’s recommended pattern. Trim the browser list to just the
+ones you actually run.
 
 ### Explicit setup script
 
@@ -339,7 +344,7 @@ If you’d rather not add machinery to `postinstall`, name it explicitly:
 ```json
 {
   "scripts": {
-    "setup": "playwright install chromium"
+    "setup": "playwright install chromium firefox webkit"
   }
 }
 ```
@@ -348,14 +353,14 @@ Then document `npm run setup` as a one-time-per-clone step.
 
 ### CI with OS dependencies
 
-Headless Linux environments often lack the shared libraries Chromium needs
+Headless Linux environments often lack the shared libraries the browsers need
 (fonts, graphics stack, etc.). Pass `--with-deps`:
 
 ```bash
-npx playwright install --with-deps chromium
+npx playwright install --with-deps chromium firefox webkit
 ```
 
-Playwright will `apt-get` the required packages alongside the browser. Only
+Playwright will `apt-get` the required packages alongside the browsers. Only
 needed on fresh CI images; local dev machines typically have them.
 
 ## Browser vs. CLI packages

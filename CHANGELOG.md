@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-browser support via Playwright. `--browser` accepts `chromium`,
+  `firefox`, and `webkit` when `--client=playwright`; Puppeteer remains
+  `chromium`-only. Coverage is gated to `chromium` (V8/CSS coverage isn't
+  available on the other engines) and rejected at config-resolution time on
+  any non-`chromium` browser (#34).
 - JSDoc-based TypeScript checking. `tsc --noEmit` runs over the Node source
   via `npm run type` (also wired into CI). No `.d.ts` files are emitted —
   the package’s interface is the binary, so types stay internal (#21).

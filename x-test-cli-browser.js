@@ -55,10 +55,7 @@ export class XTestCliBrowserPuppeteer {
   /**
    * @param {DriverOptions} options
    */
-  static async run({ url, browser: browserName, coverage, launchTimeout, onConsole, onCoverage, ended }) {
-    if (browserName !== 'chromium') {
-      throw new Error(`"--client=puppeteer" only supports "--browser=chromium" (got "${browserName}").`);
-    }
+  static async run({ url, coverage, launchTimeout, onConsole, onCoverage, ended }) {
     let puppeteer;
     try {
       puppeteer = (await import('puppeteer')).default;
@@ -126,9 +123,6 @@ export class XTestCliBrowserPlaywright {
    * @param {DriverOptions} options
    */
   static async run({ url, browser: browserName, coverage, launchTimeout, onConsole, onCoverage, ended }) {
-    if (browserName !== 'chromium') {
-      throw new Error(`"--client=playwright" only supports "--browser=chromium" (got "${browserName}").`);
-    }
     let playwright;
     try {
       playwright = await import('playwright');
@@ -136,10 +130,27 @@ export class XTestCliBrowserPlaywright {
       throw new Error('"playwright" is not installed. Install it to use "--client=playwright".');
     }
 
-    const browser = await playwright.chromium.launch({
-      timeout: launchTimeout,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    // `--no-sandbox` / `--disable-setuid-sandbox` are Chromium-only switches;
+    //  Firefox and WebKit reject unknown args at launch. The explicit switch
+    //  (rather than dynamic `playwright[browserName]` indexing) keeps each
+    //  call site individually typed against playwright's BrowserType.
+    let browser;
+    switch (browserName) {
+      case 'chromium':
+        browser = await playwright.chromium.launch({
+          timeout: launchTimeout,
+          args:    ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+        break;
+      case 'firefox':
+        browser = await playwright.firefox.launch({ timeout: launchTimeout });
+        break;
+      case 'webkit':
+        browser = await playwright.webkit.launch({ timeout: launchTimeout });
+        break;
+      default:
+        throw new Error(`Unsupported playwright browser "${browserName}".`);
+    }
     try {
       const page = await browser.newPage();
 
