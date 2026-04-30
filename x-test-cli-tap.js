@@ -272,7 +272,6 @@ export class XTestCliTap {
    * one level below cwd, and output renders `public/foo.js` rather than
    * losing the `public/` prefix).
    * @param {string} text
-   * @returns {string}
    */
   #rewriteUrl(text) {
     return text.split(this.#baseUrl).join(this.#sourceRoot).split(this.#cwd).join('');
@@ -325,11 +324,7 @@ export class XTestCliTap {
     //  don’t count them.
     const atTopLevel = !/^\s/.test(line);
     const { pattern, match } = this.#tryPatterns(line);
-    // Every named-capture pattern in `#patterns` and `#inYamlPatterns` declares
-    //  optional `(?<…>…)?` groups in TS's eyes — the runtime always populates
-    //  them once we're inside the matching arm, so cast to a non-optional
-    //  view rather than scatter `?? ''` defaults at each usage site.
-    const groups = /** @type {Record<string, string | undefined>} */ (match.groups ?? {});
+    const groups = match.groups ?? {};
 
     if (this.#state.ended) {
       // Post-end: lines that arrive after the terminal TAP line pass

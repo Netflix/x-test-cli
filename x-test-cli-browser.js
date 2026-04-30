@@ -34,8 +34,8 @@
 /**
  * @typedef {object} DriverOptions
  * @property {string} url
+ * @property {string} browser
  * @property {boolean} coverage
- * @property {Record<string, unknown>} [launchOptions]
  * @property {number} launchTimeout
  * @property {(text: string) => void} onConsole
  * @property {(entries: CoverageEntry[]) => void} onCoverage
@@ -54,9 +54,11 @@
 export class XTestCliBrowserPuppeteer {
   /**
    * @param {DriverOptions} options
-   * @returns {Promise<void>}
    */
-  static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
+  static async run({ url, browser: browserName, coverage, launchTimeout, onConsole, onCoverage, ended }) {
+    if (browserName !== 'chromium') {
+      throw new Error(`"--client=puppeteer" only supports "--browser=chromium" (got "${browserName}").`);
+    }
     let puppeteer;
     try {
       puppeteer = (await import('puppeteer')).default;
@@ -65,9 +67,9 @@ export class XTestCliBrowserPuppeteer {
     }
 
     const browser = await puppeteer.launch({
+      browser: 'chrome',
       timeout: launchTimeout,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      ...launchOptions,
     });
     try {
       const page = await browser.newPage();
@@ -122,9 +124,11 @@ export class XTestCliBrowserPuppeteer {
 export class XTestCliBrowserPlaywright {
   /**
    * @param {DriverOptions} options
-   * @returns {Promise<void>}
    */
-  static async run({ url, coverage, launchOptions, launchTimeout, onConsole, onCoverage, ended }) {
+  static async run({ url, browser: browserName, coverage, launchTimeout, onConsole, onCoverage, ended }) {
+    if (browserName !== 'chromium') {
+      throw new Error(`"--client=playwright" only supports "--browser=chromium" (got "${browserName}").`);
+    }
     let playwright;
     try {
       playwright = await import('playwright');
@@ -135,7 +139,6 @@ export class XTestCliBrowserPlaywright {
     const browser = await playwright.chromium.launch({
       timeout: launchTimeout,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      ...launchOptions,
     });
     try {
       const page = await browser.newPage();

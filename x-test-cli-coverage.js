@@ -247,7 +247,6 @@ export class XTestCliCoverage {
    * @param {string} input.baseUrl
    * @param {string} input.sourceRoot
    * @param {CoverageGoals | undefined} input.goals
-   * @returns {Promise<string>}
    */
   static async writeLcov({ entries, outDir, baseUrl, sourceRoot, goals }) {
     const dir = resolvePath(outDir);
@@ -264,7 +263,6 @@ export class XTestCliCoverage {
    * the line’s payload bytes only. Handles `\n`, `\r\n`, and lone `\r`
    * delimiters. Trailing line with no terminator is included.
    * @param {string} text
-   * @returns {[number, number][]}
    */
   static #lineSpans(text) {
     /** @type {[number, number][]} */
@@ -293,7 +291,6 @@ export class XTestCliCoverage {
    * `{start, end}` ranges so no merging is needed.
    * @param {number} length
    * @param {CoverageRange[]} ranges
-   * @returns {Uint8Array}
    */
   static #coverageMap(length, ranges) {
     const map = new Uint8Array(length);
@@ -316,9 +313,9 @@ export class XTestCliCoverage {
    * N non-pragma lines — pragma lines inside the window don’t consume the
    * counter, which keeps `disable` inside `ignore next N` from double-counting.
    * @param {string[]} lines
-   * @returns {Set<number>}
    */
   static #parsePragmas(lines) {
+    /** @type {Set<number>} */
     const ignored = new Set();
     let disabled        = false;
     let ignoreRemaining = 0;
@@ -353,7 +350,6 @@ export class XTestCliCoverage {
   /**
    * True iff the line contains only whitespace (by `#isWhitespaceCode`).
    * @param {string} line
-   * @returns {boolean}
    */
   static #isBlank(line) {
     for (let index = 0; index < line.length; index++) {
@@ -374,7 +370,6 @@ export class XTestCliCoverage {
    * @param {[number, number]} span
    * @param {Uint8Array} covered
    * @param {Uint8Array | null} commentMask
-   * @returns {LineState}
    */
   static #classifyLine(text, span, covered, commentMask) {
     const [start, end] = span;
@@ -406,7 +401,6 @@ export class XTestCliCoverage {
    * @param {string} text
    * @param {[number, number]} span
    * @param {Uint8Array} commentMask
-   * @returns {boolean}
    */
   static #isAllCommentOrBlank(text, span, commentMask) {
     const [start, end] = span;
@@ -436,7 +430,6 @@ export class XTestCliCoverage {
    * over-stripping — at most a line or two excluded that arguably shouldn't
    * be. Not worth the parser complexity to handle precisely.
    * @param {string} text
-   * @returns {Uint8Array}
    */
   static #cssCommentMask(text) {
     const mask = new Uint8Array(text.length);
@@ -466,7 +459,6 @@ export class XTestCliCoverage {
 
   /**
    * @param {number} code
-   * @returns {boolean}
    */
   static #isWhitespaceCode(code) {
     return code === XTestCliCoverage.#CODE_SPACE
@@ -478,7 +470,6 @@ export class XTestCliCoverage {
   /**
    * Two decimal places, rounded.
    * @param {number} value
-   * @returns {number}
    */
   static #roundTwo(value) {
     return Math.round(value * 100) / 100;
@@ -502,7 +493,6 @@ export class XTestCliCoverage {
    * Whitespace-only and pragma-ignored lines are omitted from all records.
    * @param {CoverageEntry[]} entries
    * @param {{ sourceRoot: string }} options
-   * @returns {string}
    */
   static #formatLcov(entries, { sourceRoot }) {
     const records = [];
@@ -603,7 +593,6 @@ export class XTestCliCoverage {
    * paths) resolved against `baseUrl`.
    * @param {string} url
    * @param {string} sourceRoot
-   * @returns {string}
    */
   static #sourceFile(url, sourceRoot) {
     // Decode %xx escapes so on-disk filenames match, then strip the leading

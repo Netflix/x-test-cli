@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -23,7 +24,7 @@ import { pathToFileURL } from 'node:url';
 /**
  * @typedef {object} ResolvedConfig
  * @property {string} client
- * @property {string | undefined} browser
+ * @property {string} browser
  * @property {string} url
  * @property {boolean} coverage
  * @property {CoverageGoals | undefined} coverageGoals
@@ -71,39 +72,40 @@ export class XTestCliConfig {
   // Strict allowlists. Unknown keys throw rather than no-op so typos like
   //  `coverageGoal` fail loud at startup instead of silently disabling
   //  coverage grading.
-  static #CONFIG_KEYS = [
-    'url', 'root', 'client', 'browser', 'timeout',
-    'coverage', 'coverageGoals', 'namePattern', 'reporter',
-  ];
-
+  //
   // CLI flags allowed on the command line (camelCase form). `coverageGoals`
-  //  is config-only — too unwieldy to express as a flag value.
+  //  is config-only — too unwieldy to express as a flag value — so the
+  //  config allowlist is the CLI allowlist plus that one extra key.
   static #CLI_KEYS = [
     'url', 'root', 'client', 'browser', 'timeout',
     'coverage', 'namePattern', 'reporter',
   ];
+  static #CONFIG_KEYS = [...XTestCliConfig.#CLI_KEYS, 'coverageGoals'];
 
   static #DEFAULT_TIMEOUT  = 30_000;
   static #DEFAULT_REPORTER = 'auto';
 
   /**
-   * Load `x-test.config.js` from `cwd`. Returns the module's default export,
-   * or `{}` when no config file is present. All other load errors (syntax,
+   * Load `x-test.config.js` from `cwd`. Returns the module's default export
+   * unvalidated, or `{}` when no config file is present — `validateConfig` is
+   * the boundary that proves the shape. All other load errors (syntax,
    * runtime throw in the module body) propagate.
    * @param {string} cwd
-   * @returns {Promise<XTestConfig>}
+   * @returns {Promise<unknown>}
    */
   static async load(cwd) {
     const path = resolve(cwd, XTestCliConfig.#CONFIG_FILE_NAME);
+    // Existence check first — so a missing config file silently yields `{}`,
+    //  but a config file that exists yet fails to import (syntax error, bad
+    //  inner import, runtime throw in the module body) propagates loudly.
+    //  A blanket catch on `import()` would conflate the two.
     try {
-      const module = await import(pathToFileURL(path).href);
-      return module.default ?? {};
-    } catch (error) {
-      if (/** @type {NodeJS.ErrnoException} */ (error).code === 'ERR_MODULE_NOT_FOUND') {
-        return {};
-      }
-      throw error;
+      await access(path);
+    } catch {
+      return {};
     }
+    const module = await import(pathToFileURL(path).href);
+    return module.default;
   }
 
   /**
@@ -134,53 +136,52 @@ export class XTestCliConfig {
 
   /**
    * Validate the parsed `x-test.config.js` default export. Throws on the
-   * first problem found. Empty/missing config (`{}`) is accepted.
+   * first problem found. Empty/missing config (`{}`) is accepted. Acts as an
+   * `asserts` boundary so callers can treat the value as `XTestConfig` after.
    * @param {unknown} config
-   * @returns {void}
+   * @returns {asserts config is XTestConfig}
    */
   static validateConfig(config) {
-    if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+    if (!XTestCliConfig.#isPlainObject(config)) {
       throw new Error(`x-test.config.js default export must be an object, got ${XTestCliConfig.#describe(config)}.`);
     }
-    // Past the shape check, treat as a string-keyed bag for property-by-
-    //  property validation. Each access is still narrowed by an explicit
-    //  guard before use.
-    const fields = /** @type {Record<string, unknown>} */ (config);
-    for (const key of Object.keys(fields)) {
+    // Past the guard, `config` is narrowed to `Record<string, unknown>` —
+    //  individual property values still need narrowing before use.
+    for (const key of Object.keys(config)) {
       if (!XTestCliConfig.#CONFIG_KEYS.includes(key)) {
-        const allowed = XTestCliConfig.#CONFIG_KEYS.map(k => `"${k}"`).join(', ');
+        const allowed = XTestCliConfig.#CONFIG_KEYS.map(allowedKey => `"${allowedKey}"`).join(', ');
         throw new Error(`Unknown config key "${key}" in x-test.config.js. Allowed: ${allowed}.`);
       }
     }
-    if (fields.url !== undefined) {
-      XTestCliConfig.#assertUrl(fields.url, 'config.url');
+    if (config.url !== undefined) {
+      XTestCliConfig.#assertUrl(config.url, 'config.url');
     }
-    if (fields.root !== undefined) {
-      XTestCliConfig.#assertRelative(fields.root, 'config.root');
+    if (config.root !== undefined) {
+      XTestCliConfig.#assertRelative(config.root, 'config.root');
     }
-    if (fields.client !== undefined) {
-      XTestCliConfig.#assertEnum(fields.client, XTestCliConfig.#SUPPORTED_CLIENTS, 'config.client');
+    if (config.client !== undefined) {
+      XTestCliConfig.#assertEnum(config.client, XTestCliConfig.#SUPPORTED_CLIENTS, 'config.client');
     }
-    if (fields.browser !== undefined) {
-      XTestCliConfig.#assertEnum(fields.browser, XTestCliConfig.#SUPPORTED_BROWSERS, 'config.browser');
+    if (config.browser !== undefined) {
+      XTestCliConfig.#assertEnum(config.browser, XTestCliConfig.#SUPPORTED_BROWSERS, 'config.browser');
     }
-    if (fields.timeout !== undefined) {
-      if (typeof fields.timeout !== 'number' || !Number.isFinite(fields.timeout) || fields.timeout <= 0) {
-        throw new Error(`config.timeout must be a positive finite number, got ${XTestCliConfig.#describe(fields.timeout)}.`);
+    if (config.timeout !== undefined) {
+      if (typeof config.timeout !== 'number' || !Number.isFinite(config.timeout) || config.timeout <= 0) {
+        throw new Error(`config.timeout must be a positive finite number, got ${XTestCliConfig.#describe(config.timeout)}.`);
       }
     }
-    if (fields.coverage !== undefined && typeof fields.coverage !== 'boolean') {
-      throw new Error(`config.coverage must be a boolean, got ${XTestCliConfig.#describe(fields.coverage)}.`);
+    if (config.coverage !== undefined && typeof config.coverage !== 'boolean') {
+      throw new Error(`config.coverage must be a boolean, got ${XTestCliConfig.#describe(config.coverage)}.`);
     }
-    if (fields.namePattern !== undefined) {
-      if (typeof fields.namePattern !== 'string' || fields.namePattern === '') {
-        throw new Error(`config.namePattern must be a non-empty string, got ${XTestCliConfig.#describe(fields.namePattern)}.`);
+    if (config.namePattern !== undefined) {
+      if (typeof config.namePattern !== 'string' || config.namePattern === '') {
+        throw new Error(`config.namePattern must be a non-empty string, got ${XTestCliConfig.#describe(config.namePattern)}.`);
       }
     }
-    if (fields.reporter !== undefined) {
-      XTestCliConfig.#assertEnum(fields.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, 'config.reporter');
+    if (config.reporter !== undefined) {
+      XTestCliConfig.#assertEnum(config.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, 'config.reporter');
     }
-    XTestCliConfig.#validateCoverageGoals(fields.coverageGoals);
+    XTestCliConfig.#validateCoverageGoals(config.coverageGoals);
   }
 
   /**
@@ -188,7 +189,6 @@ export class XTestCliConfig {
    * from `--key=value`); boolean/number coercion happens in `resolve`, not
    * here.
    * @param {XTestCli} cli
-   * @returns {void}
    */
   static validateCli(cli) {
     for (const key of Object.keys(cli)) {
@@ -249,8 +249,11 @@ export class XTestCliConfig {
     if (!rawUrl) {
       throw new Error('"--url" is required (e.g., "--url=http://localhost:8080/test/").');
     }
+    const browser = cli.browser ?? config.browser;
+    if (!browser) {
+      throw new Error('"--browser" is required (e.g., "--browser=chromium").');
+    }
 
-    const browser      = cli.browser     ?? config.browser;
     const namePattern  = cli.namePattern ?? config.namePattern;
     const root         = cli.root        ?? config.root        ?? '.';
     const reporterMode = cli.reporter    ?? config.reporter    ?? XTestCliConfig.#DEFAULT_REPORTER;
@@ -304,7 +307,7 @@ export class XTestCliConfig {
 
     return {
       client,                     // 'puppeteer' | 'playwright'
-      browser,                    // 'chromium' | undefined
+      browser,                    // 'chromium'
       url: targetUrl.href,        // includes ?x-test-name-pattern when set
       coverage,                   // boolean, false when namePattern present
       coverageGoals,              // object | undefined
@@ -327,17 +330,15 @@ export class XTestCliConfig {
     if (goals === undefined) {
       return;
     }
-    if (goals === null || typeof goals !== 'object' || Array.isArray(goals)) {
+    if (!XTestCliConfig.#isPlainObject(goals)) {
       throw new Error(`coverageGoals must be an object, got ${XTestCliConfig.#describe(goals)}.`);
     }
-    const map = /** @type {Record<string, unknown>} */ (goals);
-    for (const [path, entry] of Object.entries(map)) {
+    for (const [path, entry] of Object.entries(goals)) {
       XTestCliConfig.#assertRelative(path, `coverageGoals key ${JSON.stringify(path)}`);
-      if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      if (!XTestCliConfig.#isPlainObject(entry)) {
         throw new Error(`coverageGoals[${JSON.stringify(path)}] must be an object, got ${XTestCliConfig.#describe(entry)}.`);
       }
-      const axes = /** @type {Record<string, unknown>} */ (entry);
-      for (const axis of Object.keys(axes)) {
+      for (const axis of Object.keys(entry)) {
         if (XTestCliConfig.#UNSUPPORTED_AXES.includes(axis)) {
           throw new Error(`coverageGoals[${JSON.stringify(path)}]: '${axis}' not yet supported (only 'lines').`);
         }
@@ -345,7 +346,7 @@ export class XTestCliConfig {
           throw new Error(`coverageGoals[${JSON.stringify(path)}]: unknown axis '${axis}' (only 'lines').`);
         }
       }
-      const { lines } = axes;
+      const { lines } = entry;
       if (typeof lines !== 'number' || !Number.isFinite(lines) || lines < 0 || lines > 100) {
         throw new Error(`coverageGoals[${JSON.stringify(path)}].lines must be a number in [0, 100], got ${XTestCliConfig.#describe(lines)}.`);
       }
@@ -398,16 +399,24 @@ export class XTestCliConfig {
   /**
    * camelCase → kebab-case for friendly CLI error messages.
    * @param {string} camel
-   * @returns {string}
    */
   static #kebab(camel) {
     return camel.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
   }
 
   /**
+   * Type predicate: true iff `value` is a non-null, non-array object. Used to
+   * narrow `unknown` inputs to a string-keyed bag for property validation.
+   * @param {unknown} value
+   * @returns {value is Record<string, unknown>}
+   */
+  static #isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  /**
    * Human-readable type description for error messages.
    * @param {unknown} value
-   * @returns {string}
    */
   static #describe(value) {
     if (value === null) {
