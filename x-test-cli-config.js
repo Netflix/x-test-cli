@@ -55,7 +55,12 @@ export class XTestCliConfig {
   static #CONFIG_FILE_NAME = 'x-test.config.js';
 
   static #SUPPORTED_CLIENTS   = ['puppeteer', 'playwright'];
-  static #SUPPORTED_BROWSERS  = ['chromium'];
+  // Browser allowlist is two-tiered. The union here is the schema-level shape
+  //  check (rejects typos like "opera"); the per-client lists below gate the
+  //  cross-field check in `resolve()` after we know which client was chosen.
+  static #SUPPORTED_BROWSERS  = ['chromium', 'firefox', 'webkit'];
+  static #PUPPETEER_BROWSERS  = ['chromium'];
+  static #PLAYWRIGHT_BROWSERS = ['chromium', 'firefox', 'webkit'];
   static #SUPPORTED_REPORTERS = ['tap', 'auto'];
 
   // Axes recognized in `coverageGoals[path]` entries. Only `lines` is graded
@@ -253,6 +258,13 @@ export class XTestCliConfig {
     if (!browser) {
       throw new Error('"--browser" is required (e.g., "--browser=chromium").');
     }
+    const allowedBrowsers = client === 'puppeteer'
+      ? XTestCliConfig.#PUPPETEER_BROWSERS
+      : XTestCliConfig.#PLAYWRIGHT_BROWSERS;
+    if (!allowedBrowsers.includes(browser)) {
+      const list = allowedBrowsers.map(b => `"${b}"`).join(', ');
+      throw new Error(`"--client=${client}" does not support "--browser=${browser}". Allowed: ${list}.`);
+    }
 
     const namePattern  = cli.namePattern ?? config.namePattern;
     const root         = cli.root        ?? config.root        ?? '.';
@@ -270,6 +282,9 @@ export class XTestCliConfig {
     const coverageGoals = config.coverageGoals;
     if (coverage && !coverageGoals) {
       throw new Error('--coverage=true requires coverageGoals in x-test.config.js.');
+    }
+    if (coverage && browser !== 'chromium') {
+      throw new Error(`--coverage=true is only supported with --browser=chromium (got "${browser}").`);
     }
     // Coverage is a full-run metric — auto-disable when filtering by name and
     //  surface the fact via a flag so the entry script can warn the user.

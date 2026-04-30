@@ -196,10 +196,12 @@ suite('XTestCliConfig.validateConfig — top-level shape', () => {
     XTestCliConfig.validateConfig({ client: 'puppeteer' });
     XTestCliConfig.validateConfig({ client: 'playwright' });
     XTestCliConfig.validateConfig({ browser: 'chromium' });
+    XTestCliConfig.validateConfig({ browser: 'firefox' });
+    XTestCliConfig.validateConfig({ browser: 'webkit' });
     XTestCliConfig.validateConfig({ reporter: 'tap' });
     XTestCliConfig.validateConfig({ reporter: 'auto' });
     assert.throws(() => XTestCliConfig.validateConfig({ client:   'bogus' }),  /must be one of/);
-    assert.throws(() => XTestCliConfig.validateConfig({ browser:  'firefox' }), /must be one of/);
+    assert.throws(() => XTestCliConfig.validateConfig({ browser:  'opera' }), /must be one of/);
     assert.throws(() => XTestCliConfig.validateConfig({ reporter: 'spec' }),    /must be one of/);
   });
 
@@ -262,9 +264,11 @@ suite('XTestCliConfig.validateCli', () => {
 
   test('client/browser/reporter enums', () => {
     assert.throws(() => XTestCliConfig.validateCli({ client:   'bogus' }),    /must be one of/);
-    assert.throws(() => XTestCliConfig.validateCli({ browser:  'firefox' }),  /must be one of/);
+    assert.throws(() => XTestCliConfig.validateCli({ browser:  'opera' }),    /must be one of/);
     assert.throws(() => XTestCliConfig.validateCli({ reporter: 'spec' }),     /must be one of/);
     XTestCliConfig.validateCli({ browser: 'chromium' });
+    XTestCliConfig.validateCli({ browser: 'firefox' });
+    XTestCliConfig.validateCli({ browser: 'webkit' });
   });
 });
 
@@ -289,6 +293,47 @@ suite('XTestCliConfig.resolve', () => {
     assert.throws(
       () => XTestCliConfig.resolve({ ...baseArgs, config: {}, cli: { client: 'puppeteer' } }),
       /"--url" is required/,
+    );
+  });
+
+  test('puppeteer rejects non-chromium browsers', () => {
+    assert.throws(
+      () => XTestCliConfig.resolve({
+        ...baseArgs,
+        config: {},
+        cli:    { client: 'puppeteer', browser: 'firefox', url: 'http://a/' },
+      }),
+      /"--client=puppeteer" does not support "--browser=firefox"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.resolve({
+        ...baseArgs,
+        config: {},
+        cli:    { client: 'puppeteer', browser: 'webkit', url: 'http://a/' },
+      }),
+      /"--client=puppeteer" does not support "--browser=webkit"/,
+    );
+  });
+
+  test('playwright accepts chromium, firefox, webkit', () => {
+    for (const browser of ['chromium', 'firefox', 'webkit']) {
+      const r = XTestCliConfig.resolve({
+        ...baseArgs,
+        config: {},
+        cli:    { client: 'playwright', browser, url: 'http://a/' },
+      });
+      assert(r.browser === browser);
+    }
+  });
+
+  test('coverage requires chromium', () => {
+    assert.throws(
+      () => XTestCliConfig.resolve({
+        ...baseArgs,
+        config: { coverageGoals: { './a.js': { lines: 50 } } },
+        cli:    { client: 'playwright', browser: 'firefox', url: 'http://a/', coverage: 'true' },
+      }),
+      /only supported with --browser=chromium/,
     );
   });
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`@netflix/x-test-cli` is a Node.js CLI tool that automates browser testing for the `@netflix/x-test` browser-side test runner. It launches browsers (currently Puppeteer/Chrome), runs tests, collects coverage, and outputs TAP-compliant results.
+`@netflix/x-test-cli` is a Node.js CLI tool that automates browser testing for the `@netflix/x-test` browser-side test runner. It launches browsers (Puppeteer + Chromium, or Playwright + Chromium / Firefox / WebKit), runs tests, collects coverage, and outputs TAP-compliant results. Coverage is Chromium-only.
 
 ## Architecture
 

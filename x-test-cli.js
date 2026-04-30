@@ -27,7 +27,10 @@ x-test — run TAP-compliant browser tests from the command line
     --client <name>             Browser automation client. One of: puppeteer, playwright.
                                 (required, or set in x-test.config.js)
 
-    --browser <name>            Browser to launch. Currently only “chromium”.
+    --browser <name>            Browser to launch.
+                                  puppeteer:  chromium
+                                  playwright: chromium, firefox, webkit
+                                Coverage is supported only with chromium.
                                 (required, or set in x-test.config.js)
 
   OPTIONS
@@ -36,7 +39,7 @@ x-test — run TAP-compliant browser tests from the command line
                                 and emits a diagnostic block after the run. Exits
                                 non-zero if a goal is not met. See “COVERAGE”
                                 below. Default: false. Only supported with
-                                chromium-based clients.
+                                “--browser=chromium”.
 
     --root <path>               Resource root of the URL origin — the directory the
                                 dev server serves at “/”. Used to resolve
@@ -121,8 +124,10 @@ x-test — run TAP-compliant browser tests from the command line
     # Filter to a single describe block
     x-test --name-pattern="render"
 
-    # CI matrix example
+    # CI matrix example — fan out across engines under playwright
     x-test --client=playwright --browser=chromium --reporter=tap
+    x-test --client=playwright --browser=firefox  --reporter=tap
+    x-test --client=playwright --browser=webkit   --reporter=tap
 
   EXIT CODES
     0   All tests passed (and, if --coverage=true, all goals met).

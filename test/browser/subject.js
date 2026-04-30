@@ -1,12 +1,6 @@
 // Minimal module under test — exists only so the integration test has
 //  something to exercise for coverage purposes. Keep tiny and stable.
 
-// CSS module script: imported with `type: 'css'` and adopted onto the
-//  document so its rules participate in CSS rule-usage tracking. This
-//  is the constructed-stylesheet half of the integration test.
-import sheet from './subject.css' with { type: 'css' };
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-
 export function add(a, b) {
   return a + b;
 }
