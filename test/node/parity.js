@@ -6,14 +6,13 @@
 // disjoint ranges; Playwright's raw shape is normalized by the CLI — the
 // two paths must converge on the same final bytes).
 //
-// Requires the dev server to be running at `URL` already (`npm start`).
+// Requires the dev server to be running at the URL configured in
+// `x-test.config.js` already (`npm start`).
 
 import { spawn } from 'node:child_process';
 import { copyFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-const URL = 'http://127.0.0.1:8080/test/browser/';
 
 /** Run the CLI under one client; resolve only when it exits 0. */
 function runCli(client) {
@@ -21,8 +20,6 @@ function runCli(client) {
     const child = spawn('node', [
       './x-test-cli.js',
       `--client=${client}`,
-      `--url=${URL}`,
-      '--coverage=true',
     ], { stdio: ['ignore', 'inherit', 'inherit'] });
     child.on('exit', code => {
       if (code === 0) {

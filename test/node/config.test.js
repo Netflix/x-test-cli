@@ -55,10 +55,11 @@ suite('XTestCliConfig.load', () => {
     await assert.rejects(() => XTestCliConfig.load(dir));
   });
 
-  test('no default export → {}', async () => {
+  test('no default export → undefined (validateConfig surfaces it as an error)', async () => {
     const dir = await writeConfig('no-default', `export const foo = 1;`);
     const cfg = await XTestCliConfig.load(dir);
-    assert.deepEqual(cfg, {});
+    assert(cfg === undefined);
+    assert.throws(() => XTestCliConfig.validateConfig(cfg), /must be an object/);
   });
 });
 
@@ -273,7 +274,7 @@ suite('XTestCliConfig.resolve', () => {
   test('CLI overrides config', () => {
     const r = XTestCliConfig.resolve({
       ...baseArgs,
-      config: { client: 'playwright', url: 'http://a/' },
+      config: { client: 'playwright', browser: 'chromium', url: 'http://a/' },
       cli:    { client: 'puppeteer' },
     });
     assert(r.client === 'puppeteer');
@@ -296,7 +297,7 @@ suite('XTestCliConfig.resolve', () => {
       () => XTestCliConfig.resolve({
         ...baseArgs,
         config: { coverage: true },
-        cli:    { client: 'puppeteer', url: 'http://a/' },
+        cli:    { client: 'puppeteer', browser: 'chromium', url: 'http://a/' },
       }),
       /requires coverageGoals/,
     );
@@ -306,7 +307,7 @@ suite('XTestCliConfig.resolve', () => {
     const r = XTestCliConfig.resolve({
       ...baseArgs,
       config: { coverage: true, coverageGoals: { './a.js': { lines: 50 } } },
-      cli:    { client: 'puppeteer', url: 'http://a/test/', namePattern: 'foo' },
+      cli:    { client: 'puppeteer', browser: 'chromium', url: 'http://a/test/', namePattern: 'foo' },
     });
     assert(r.coverage === false);
     assert(r.coverageDisabledByPattern === true);
@@ -317,13 +318,13 @@ suite('XTestCliConfig.resolve', () => {
     const t = XTestCliConfig.resolve({
       ...baseArgs,
       config: { coverageGoals: { './a.js': { lines: 50 } } },
-      cli:    { client: 'puppeteer', url: 'http://a/', coverage: 'true' },
+      cli:    { client: 'puppeteer', browser: 'chromium', url: 'http://a/', coverage: 'true' },
     });
     assert(t.coverage === true);
     const f = XTestCliConfig.resolve({
       ...baseArgs,
       config: {},
-      cli:    { client: 'puppeteer', url: 'http://a/', coverage: 'false' },
+      cli:    { client: 'puppeteer', browser: 'chromium', url: 'http://a/', coverage: 'false' },
     });
     assert(f.coverage === false);
   });
@@ -331,7 +332,7 @@ suite('XTestCliConfig.resolve', () => {
   test('reporter=tap forces no color even on TTY', () => {
     const r = XTestCliConfig.resolve({
       cwd: '/tmp/x', env: {}, isTTY: true,
-      config: {}, cli: { client: 'puppeteer', url: 'http://a/', reporter: 'tap' },
+      config: {}, cli: { client: 'puppeteer', browser: 'chromium', url: 'http://a/', reporter: 'tap' },
     });
     assert(r.color === false);
   });
@@ -339,7 +340,7 @@ suite('XTestCliConfig.resolve', () => {
   test('NO_COLOR suppresses color', () => {
     const r = XTestCliConfig.resolve({
       cwd: '/tmp/x', env: { NO_COLOR: '1' }, isTTY: true,
-      config: {}, cli: { client: 'puppeteer', url: 'http://a/' },
+      config: {}, cli: { client: 'puppeteer', browser: 'chromium', url: 'http://a/' },
     });
     assert(r.color === false);
   });
@@ -347,7 +348,7 @@ suite('XTestCliConfig.resolve', () => {
   test('default timeout is 30_000', () => {
     const r = XTestCliConfig.resolve({
       ...baseArgs,
-      config: {}, cli: { client: 'puppeteer', url: 'http://a/' },
+      config: {}, cli: { client: 'puppeteer', browser: 'chromium', url: 'http://a/' },
     });
     assert(r.runTimeout === 30_000);
   });
@@ -355,7 +356,7 @@ suite('XTestCliConfig.resolve', () => {
   test('CLI timeout string parses to number', () => {
     const r = XTestCliConfig.resolve({
       ...baseArgs,
-      config: {}, cli: { client: 'puppeteer', url: 'http://a/', timeout: '5000' },
+      config: {}, cli: { client: 'puppeteer', browser: 'chromium', url: 'http://a/', timeout: '5000' },
     });
     assert(r.runTimeout === 5000);
   });
@@ -363,7 +364,7 @@ suite('XTestCliConfig.resolve', () => {
   test('baseUrl is origin + "/"', () => {
     const r = XTestCliConfig.resolve({
       ...baseArgs,
-      config: {}, cli: { client: 'puppeteer', url: 'http://localhost:8080/test/sub/' },
+      config: {}, cli: { client: 'puppeteer', browser: 'chromium', url: 'http://localhost:8080/test/sub/' },
     });
     assert(r.baseUrl === 'http://localhost:8080/');
   });

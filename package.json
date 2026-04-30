@@ -24,8 +24,8 @@
     "test": "npm run test:node && npm run test:browser",
     "test:node": "node --test test/node/*.test.js",
     "test:browser": "npm run test:browser:puppeteer:chrome && npm run test:browser:playwright:chrome && npm run test:browser:parity",
-    "test:browser:puppeteer:chrome": "node ./x-test-cli.js --client=puppeteer --url=http://127.0.0.1:8080/test/browser/ --coverage=true",
-    "test:browser:playwright:chrome": "playwright install chromium && node ./x-test-cli.js --client=playwright --url=http://127.0.0.1:8080/test/browser/ --coverage=true",
+    "test:browser:puppeteer:chrome": "node ./x-test-cli.js --client=puppeteer",
+    "test:browser:playwright:chrome": "playwright install chromium && node ./x-test-cli.js --client=playwright",
     "test:browser:parity": "node ./test/node/parity.js",
     "demo": "node demo/index.js",
     "demo:color": "node demo/color.js",
@@ -45,7 +45,7 @@
   "peerDependencies": {
     "@netflix/x-test": "^2.0.0-rc.6",
     "playwright": ">=1.40.0",
-    "puppeteer": ">=20.0.0"
+    "puppeteer": ">=22.0.0"
   },
   "peerDependenciesMeta": {
     "puppeteer": {

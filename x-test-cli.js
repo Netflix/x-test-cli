@@ -9,6 +9,11 @@ import { XTestCliCoverage } from './x-test-cli-coverage.js';
 
 const cwd = process.cwd();
 
+// Browser-launch timeout (ms). Applies only to the underlying puppeteer or
+//  playwright `launch()` call — “fail fast if the browser can’t start.” Not a
+//  run timeout.
+const LAUNCH_TIMEOUT_MS = 10_000;
+
 const HELP = `\
 x-test — run TAP-compliant browser tests from the command line
 
@@ -121,23 +126,19 @@ x-test — run TAP-compliant browser tests from the command line
 
   EXIT CODES
     0   All tests passed (and, if --coverage=true, all goals met).
-    1   One or more tests failed, or a coverage goal was not met.
-    2   Invocation error (bad flag, missing url, client not installed).
+    1   Anything else — test failure, missed coverage goal, or invocation error.
 
   SEE ALSO
     https://github.com/Netflix/x-test
     https://github.com/Netflix/x-test-cli`;
 
 /**
- * Exit code 2 is reserved for invocation errors — the request itself is
- * malformed. Distinct from 1 (a passing-but-not-ok run) and 0 (success).
  * @param {string} message
- * @param {number} [code]
  * @returns {never}
  */
-function fail(message, code = 1) {
+function fail(message) {
   console.error(message); // eslint-disable-line no-console
-  process.exit(code);
+  process.exit(1);
 }
 
 const args = process.argv.slice(2);
@@ -172,7 +173,7 @@ try {
     isTTY:  process.stdout.isTTY,
   });
 } catch (error) {
-  fail(`Error: ${error instanceof Error ? error.message : String(error)}`, 2);
+  fail(`Error: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 if (resolved.coverageDisabledByPattern) {
@@ -194,11 +195,6 @@ const tap = new XTestCliTap({
   cwd:        resolved.cwd,
 });
 
-// Browser-launch timeout (ms). Applies only to the underlying puppeteer or
-//  playwright `launch()` call — “fail fast if the browser can’t start.” Not a
-//  run timeout.
-const LAUNCH_TIMEOUT_MS = 10_000;
-
 // Captures the raw V8 coverage the driver collects so we can grade it after
 //  the run. Populated only when `coverage === true`.
 /** @type {import('./x-test-cli-coverage.js').CoverageEntry[] | null} */
@@ -207,6 +203,7 @@ let rawCoverageEntries = null;
 /** @type {import('./x-test-cli-browser.js').DriverOptions} */
 const driverOptions = {
   url:           resolved.url,
+  browser:       resolved.browser,
   coverage:      resolved.coverage,
   launchTimeout: LAUNCH_TIMEOUT_MS,
   onConsole:     text    => tap.write(text),
@@ -223,7 +220,6 @@ const driverOptions = {
  * @param {Promise<T>} promise
  * @param {number} ms
  * @param {string} message
- * @returns {Promise<T>}
  */
 function withTimeout(promise, ms, message) {
   /** @type {ReturnType<typeof setTimeout> | undefined} */
@@ -291,9 +287,8 @@ if (resolved.coverage && rawCoverageEntries && tap.result.ok) {
     coverageOk = graded.ok;
     tap.writeCoverage(graded.results);
   } catch (error) {
-    tap.write('Bail out! Coverage processing failed.');
     console.error(error); // eslint-disable-line no-console
-    process.exit(1);
+    fail('Coverage processing failed.');
   }
 }
 
