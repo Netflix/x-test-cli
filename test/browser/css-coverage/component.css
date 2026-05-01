@@ -1,0 +1,13 @@
+/* Stylesheet adopted onto a shadow root by component.js. The harness
+   renders an element matching `.component-host` and never removes it, so
+   Chromium's rule-usage tracker has a long-lived match to credit at
+   coverage-stop time. The `.never-rendered` rule is intentionally
+   unmatched. Expected coverage shape: 50%. */
+
+.component-host {
+  background: rebeccapurple;
+}
+
+.never-rendered {
+  background: tomato;
+}

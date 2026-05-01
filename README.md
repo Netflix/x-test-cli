@@ -238,6 +238,10 @@ Behavior of each target:
 - `--coverage=true` without any `coverageGoals` is an invocation error
   (exit code `2`).
 
+CSS files whose rules are exercised by transient (created-and-removed) fixtures
+may report 0% even when tests exercise them — see *CSS coverage harness* below
+for the workaround.
+
 #### Pragmas
 
 Inline directives exclude lines from the report — same shape as
@@ -259,6 +263,35 @@ if (process.env.NODE_ENV === 'development') {
 
 Ignored lines are absent from `lcov.info` entirely — VSCode Coverage
 Gutters (and friends) simply show no mark.
+
+#### CSS coverage harness
+
+Chromium’s CSS rule-usage tracker behaves like a *live snapshot*: it credits a
+rule as “used” only when an element matching it is attached at the moment
+`stopCSSCoverage` runs. Hygienic per-test fixtures that do `el.remove()` between
+assertions un-credit themselves before the run ends, so the file gets reported
+as 0% even though every rule was exercised.
+
+For files where this matters — typically component CSS adopted onto shadow roots
+via `import sheet from './foo.css' with { type: 'css' }` — the workaround is a
+small harness page that renders every variant once and **doesn’t remove them**.
+Run it as a separate invocation with `--coverage-goals` to override the project
+goals for that file:
+
+```bash
+x-test \
+  --client=puppeteer --browser=chromium \
+  --url=http://127.0.0.1:8080/path/to/harness/ \
+  --coverage-goals=./src/foo/foo.css#lines=100
+```
+
+The flag fully **replaces** the config’s `coverageGoals` for that invocation;
+the regular suite still runs from `x-test.config.js` as usual. Format is
+`<path>#lines=<N>` — single goal, no merging. See `test/browser/css-coverage/`
+for a working example.
+
+This is a workaround for upstream behavior, not a fix. Tests don’t change
+shape — only the coverage *measurement* lives in a different file.
 
 #### Output
 

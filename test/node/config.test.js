@@ -242,12 +242,19 @@ suite('XTestCliConfig.parseCli', () => {
   test('flag without value throws', () => {
     assert.throws(() => XTestCliConfig.parseCli(['--client']), /requires a value/);
   });
+
+  test('values may contain "=" — split on first only', () => {
+    const opts = XTestCliConfig.parseCli([
+      '--coverage-goals=./foo.css#lines=100',
+    ]);
+    assert(opts.coverageGoals === './foo.css#lines=100');
+  });
 });
 
 suite('XTestCliConfig.validateCli', () => {
   test('unknown flags throw with kebab-case in message', () => {
-    assert.throws(() => XTestCliConfig.validateCli({ foo: 'x' }),         /Unknown argument "--foo"/);
-    assert.throws(() => XTestCliConfig.validateCli({ coverageGoals: {} }), /Unknown argument "--coverage-goals"/);
+    assert.throws(() => XTestCliConfig.validateCli({ foo: 'x' }),                 /Unknown argument "--foo"/);
+    assert.throws(() => XTestCliConfig.validateCli({ baseUrl: 'http://a/' }),     /Unknown argument "--base-url"/);
   });
 
   test('values are strings; coverage must be "true"/"false"', () => {
@@ -269,6 +276,35 @@ suite('XTestCliConfig.validateCli', () => {
     XTestCliConfig.validateCli({ browser: 'chromium' });
     XTestCliConfig.validateCli({ browser: 'firefox' });
     XTestCliConfig.validateCli({ browser: 'webkit' });
+  });
+
+  test('coverageGoals: "<path>#lines=<N>" form', () => {
+    XTestCliConfig.validateCli({ coverageGoals: './foo.css#lines=100' });
+    XTestCliConfig.validateCli({ coverageGoals: './foo.css#lines=0'   });
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: './foo.css' }),
+      /must use the form "<path>#lines=<N>"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: 'foo.css#lines=100' }),
+      /must be a relative path/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: './foo.css#line=100' }),
+      /fragment must be "lines=<N>"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: './foo.css#lines=abc' }),
+      /fragment must be "lines=<N>"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: './foo.css#lines=' }),
+      /fragment must be "lines=<N>"/,
+    );
+    assert.throws(
+      () => XTestCliConfig.validateCli({ coverageGoals: './foo.css#lines=200' }),
+      /must be in \[0, 100\]/,
+    );
   });
 });
 
@@ -346,6 +382,37 @@ suite('XTestCliConfig.resolve', () => {
       }),
       /requires coverageGoals/,
     );
+  });
+
+  test('CLI coverageGoals string replaces config object', () => {
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: { coverageGoals: { './from-config.css': { lines: 50 } } },
+      cli:    {
+        client: 'puppeteer', browser: 'chromium', url: 'http://a/',
+        coverage: 'true',
+        coverageGoals: './from-cli.css#lines=80',
+      },
+    });
+    assert(r.coverage === true);
+    assert(Object.keys(r.coverageGoals).length === 1);
+    assert(r.coverageGoals['./from-cli.css'].lines === 80);
+    assert(r.coverageGoals['./from-config.css'] === undefined);
+  });
+
+  test('CLI coverageGoals satisfies the coverage-requires-goals invariant', () => {
+    // No coverageGoals in config, but provided via CLI — should not throw.
+    const r = XTestCliConfig.resolve({
+      ...baseArgs,
+      config: {},
+      cli:    {
+        client: 'puppeteer', browser: 'chromium', url: 'http://a/',
+        coverage: 'true',
+        coverageGoals: './foo.css#lines=100',
+      },
+    });
+    assert(r.coverage === true);
+    assert(r.coverageGoals['./foo.css'].lines === 100);
   });
 
   test('namePattern disables coverage and is injected into URL', () => {

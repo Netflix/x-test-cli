@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--coverage-goals=<path>#lines=<N>` CLI flag. Replaces config goals for one
+  invocation; enables the CSS coverage harness pattern. See README (#29).
+
 ## [1.0.0-rc.8] - 2026-04-29
 
 ### Added
