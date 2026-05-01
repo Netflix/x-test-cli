@@ -41,6 +41,15 @@ x-test — run TAP-compliant browser tests from the command line
                                 below. Default: false. Only supported with
                                 “--browser=chromium”.
 
+    --coverage-goals <spec>     Override coverageGoals for this run with a single
+                                goal. Format: “<path>#lines=<N>”. Replaces (does
+                                not merge with) any “coverageGoals” set in
+                                x-test.config.js. Useful for “harness” pages that
+                                render every variant of a component and persist
+                                them, so CSS rule-usage tracking lands on a stable
+                                number. See “CSS COVERAGE HARNESS” below.
+                                  e.g. --coverage-goals=./src/foo.css#lines=100
+
     --root <path>               Resource root of the URL origin — the directory the
                                 dev server serves at “/”. Used to resolve
                                 “coverageGoals” keys on disk. Must be “./”- or
@@ -107,6 +116,15 @@ x-test — run TAP-compliant browser tests from the command line
       if (process.env.NODE_ENV === 'development') {
         debugHelper();
       }
+
+  CSS COVERAGE HARNESS
+    Chromium credits a CSS rule as “used” only when a matching element is
+    still attached at coverage-stop time. Hygienic per-test fixtures that
+    create-and-remove elements end up reporting 0% even when they
+    exercised the rules. The workaround is a separate “harness” page that
+    renders every variant once and leaves them attached. Run it with
+    “--coverage-goals” to override the main config's goals for that
+    single invocation. See the README for a full example.
 
   NOTES
     In general, a development server must be running and responding to

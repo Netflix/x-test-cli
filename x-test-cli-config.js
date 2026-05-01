@@ -74,18 +74,13 @@ export class XTestCliConfig {
   //  bare/absolute/`./`-prefixed paths in their config.
   static #RELATIVE_PREFIXES = ['./', '../'];
 
-  // Strict allowlists. Unknown keys throw rather than no-op so typos like
-  //  `coverageGoal` fail loud at startup instead of silently disabling
-  //  coverage grading.
-  //
-  // CLI flags allowed on the command line (camelCase form). `coverageGoals`
-  //  is config-only — too unwieldy to express as a flag value — so the
-  //  config allowlist is the CLI allowlist plus that one extra key.
-  static #CLI_KEYS = [
+  // Strict allowlist of recognized keys. Used by both the CLI and config
+  //  validators — CLI args (kebab-cased) and config keys (camelCase) draw
+  //  from the same set. Unknown keys throw rather than no-op.
+  static #KEYS = [
     'url', 'root', 'client', 'browser', 'timeout',
-    'coverage', 'namePattern', 'reporter',
+    'coverage', 'coverageGoals', 'namePattern', 'reporter',
   ];
-  static #CONFIG_KEYS = [...XTestCliConfig.#CLI_KEYS, 'coverageGoals'];
 
   static #DEFAULT_TIMEOUT  = 30_000;
   static #DEFAULT_REPORTER = 'auto';
@@ -128,10 +123,17 @@ export class XTestCliConfig {
       if (!arg.startsWith('--')) {
         throw new Error(`Invalid argument "${arg}". All arguments must start with "--".`);
       }
-      const [key, value] = arg.slice(2).split('=', 2);
-      if (value === undefined) {
+      // Split on the FIRST `=` only — values may legitimately contain `=`
+      //  (e.g., `--coverage-goals=./foo.css#lines=100`). `split('=', 2)`
+      //  truncates trailing parts, which is wrong; `indexOf` + `slice` is
+      //  the lossless equivalent.
+      const eqIndex = arg.indexOf('=', 2);
+      if (eqIndex === -1) {
+        const key = arg.slice(2);
         throw new Error(`Argument "--${key}" requires a value (e.g., "--${key}=<value>").`);
       }
+      const key   = arg.slice(2, eqIndex);
+      const value = arg.slice(eqIndex + 1);
       // kebab-case flag → camelCase internal key, e.g. `name-pattern` → `namePattern`.
       const camelKey = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       options[camelKey] = value;
@@ -153,8 +155,8 @@ export class XTestCliConfig {
     // Past the guard, `config` is narrowed to `Record<string, unknown>` —
     //  individual property values still need narrowing before use.
     for (const key of Object.keys(config)) {
-      if (!XTestCliConfig.#CONFIG_KEYS.includes(key)) {
-        const allowed = XTestCliConfig.#CONFIG_KEYS.map(allowedKey => `"${allowedKey}"`).join(', ');
+      if (!XTestCliConfig.#KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#KEYS.map(allowedKey => `"${allowedKey}"`).join(', ');
         throw new Error(`Unknown config key "${key}" in x-test.config.js. Allowed: ${allowed}.`);
       }
     }
@@ -197,8 +199,8 @@ export class XTestCliConfig {
    */
   static validateCli(cli) {
     for (const key of Object.keys(cli)) {
-      if (!XTestCliConfig.#CLI_KEYS.includes(key)) {
-        const allowed = XTestCliConfig.#CLI_KEYS.map(k => `"--${XTestCliConfig.#kebab(k)}"`).join(', ');
+      if (!XTestCliConfig.#KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#KEYS.map(k => `"--${XTestCliConfig.#kebab(k)}"`).join(', ');
         throw new Error(`Unknown argument "--${XTestCliConfig.#kebab(key)}". Allowed: ${allowed}.`);
       }
     }
@@ -228,6 +230,12 @@ export class XTestCliConfig {
     }
     if (cli.reporter !== undefined) {
       XTestCliConfig.#assertEnum(cli.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, '--reporter');
+    }
+    if (cli.coverageGoals !== undefined) {
+      // Parse-to-throw: discard the result, `resolve` re-parses to use it.
+      //  Mirrors how `--timeout` and `--coverage` shape-check here and
+      //  re-coerce in `resolve`.
+      XTestCliConfig.#parseCliCoverageGoals(cli.coverageGoals, '--coverage-goals');
     }
   }
 
@@ -279,9 +287,14 @@ export class XTestCliConfig {
     } else {
       coverage = false;
     }
-    const coverageGoals = config.coverageGoals;
+    // CLI fully replaces config goals when present — consistent with how other
+    //  CLI options override config. The CLI form is a narrow string
+    //  `<path>#lines=<N>`; the config form is an object.
+    const coverageGoals = cli.coverageGoals !== undefined
+      ? XTestCliConfig.#parseCliCoverageGoals(cli.coverageGoals, '--coverage-goals')
+      : config.coverageGoals;
     if (coverage && !coverageGoals) {
-      throw new Error('--coverage=true requires coverageGoals in x-test.config.js.');
+      throw new Error('--coverage=true requires coverageGoals in x-test.config.js or via --coverage-goals.');
     }
     if (coverage && browser !== 'chromium') {
       throw new Error(`--coverage=true is only supported with --browser=chromium (got "${browser}").`);
@@ -335,6 +348,42 @@ export class XTestCliConfig {
       sourceRoot,                 // absolute dir + '/'
       cwd: cwd + '/',
     };
+  }
+
+  /**
+   * Parse the CLI form of `coverageGoals` — a narrow string of shape
+   * `<path>#lines=<N>` — into the same `{ [path]: { lines: number } }`
+   * object the config form produces. Throws on any malformedness.
+   *
+   * Hash separator (rather than `?`) chosen so the value can never
+   * collide with URL query strings that show up in V8/CSS coverage
+   * entries (fragments are stripped before network requests). Strict
+   * regex on the fragment so typos like `line=100` or `lines=80%` fail
+   * loud at startup.
+   * @param {string} value
+   * @param {string} label
+   * @returns {CoverageGoals}
+   */
+  static #parseCliCoverageGoals(value, label) {
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(`${label} must be a non-empty string, got ${XTestCliConfig.#describe(value)}.`);
+    }
+    const hashIndex = value.indexOf('#');
+    if (hashIndex === -1) {
+      throw new Error(`${label} must use the form "<path>#lines=<N>", got ${JSON.stringify(value)}.`);
+    }
+    const path     = value.slice(0, hashIndex);
+    const fragment = value.slice(hashIndex + 1);
+    XTestCliConfig.#assertRelative(path, `${label} path`);
+    const match = /^lines=(\d+)$/.exec(fragment);
+    if (!match) {
+      throw new Error(`${label} fragment must be "lines=<N>" with N a non-negative integer, got ${JSON.stringify(fragment)}.`);
+    }
+    const lines = Number(match[1]);
+    if (lines > 100) {
+      throw new Error(`${label} "lines" must be in [0, 100], got ${lines}.`);
+    }
+    return { [path]: { lines } };
   }
 
   /**
