@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.9] - 2026-04-30
+
 ### Added
 
 - `--coverage-goals=<path>#lines=<N>` CLI flag. Replaces config goals for one
