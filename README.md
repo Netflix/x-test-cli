@@ -45,8 +45,10 @@ x-test — run TAP-compliant browser tests from the command line
     --client <name>             Browser automation client. One of: puppeteer, playwright.
                                 (required, or set in x-test.config.js)
 
-    --browser <name>            Browser to launch. One of: chromium, firefox, webkit.
-                                puppeteer supports chromium only.
+    --browser <name>            Browser to launch.
+                                  puppeteer:  chromium
+                                  playwright: chromium, firefox, webkit
+                                Coverage is supported only with chromium.
                                 (required, or set in x-test.config.js)
 
   OPTIONS
@@ -55,21 +57,29 @@ x-test — run TAP-compliant browser tests from the command line
                                 and emits a diagnostic block after the run. Exits
                                 non-zero if a goal is not met. See “COVERAGE”
                                 below. Default: false. Only supported with
-                                chromium-based clients.
+                                “--browser=chromium”.
 
-    --root <path>               Disk side of the URL origin — the directory the dev
-                                server serves at “/”. Used to resolve “coverageGoals”
-                                keys on disk. Must be “./”- or “../”-prefixed (e.g.
-                                --root=./build). Default: cwd.
+    --coverage-goals <spec>     Override coverageGoals for this run with a single
+                                goal. Format: “<path>#lines=<N>”. Replaces (does
+                                not merge with) any “coverageGoals” set in
+                                x-test.config.js. Useful for “harness” pages that
+                                render every variant of a component and persist
+                                them, so CSS rule-usage tracking lands on a stable
+                                number. See “CSS COVERAGE HARNESS” below.
+                                  e.g. --coverage-goals=./src/foo.css#lines=100
+
+    --root <path>               Resource root of the URL origin — the directory the
+                                dev server serves at “/”. Used to resolve
+                                “coverageGoals” keys on disk. Must be “./”- or
+                                “../”-prefixed (e.g. --root=./build). Default: cwd.
 
     --name-pattern <regex>      Regex pattern to filter tests by name. Tests whose
                                 full path (file > describe > … > it) does not
                                 match are skipped.
 
-    --reporter <name>           Output format. One of: tap, spec, auto. Default: auto.
+    --reporter <name>           Output format. One of: tap, auto. Default: auto.
                                   tap  — raw TAP (machine-readable, CI-safe).
-                                  spec — colorized, human-readable summary.
-                                  auto — spec if stdout is a TTY, tap otherwise.
+                                  auto — colorized when stdout is a TTY, tap otherwise.
 
     --timeout <ms>              Per-test-file load timeout. Default: 30000.
 
@@ -80,21 +90,22 @@ x-test — run TAP-compliant browser tests from the command line
     If ./x-test.config.js exists in the current working directory, it is loaded
     automatically. CLI flags override config values.
 
-    `root` is the resource root of the URL origin — the directory the dev
-    server serves at `/`. `coverageGoals` keys are paths inside that root, so
-    they're simultaneously root-relative on disk and origin-relative as URLs
-    (the dev server mirrors the two). Both must be `./`- or `../`-prefixed.
+    The “root” arg is the resource root of the URL origin — the directory the dev
+    server serves at “/”. “coverageGoals” keys are paths inside that root, so
+    they’re simultaneously root-relative on disk and origin-relative as URLs
+    (the dev server mirrors the two). Both must be “./”- or “../”-prefixed.
 
       export default {
-        url:      'http://127.0.0.1:8080/test/',
-        root:     './src',
-        client:   'playwright',
-        browser:  'chromium',
+        url:      ‘http://127.0.0.1:8080/test/’,
+        root:     ‘./src’,
+        client:   ‘playwright’,
+        browser:  ‘chromium’,
         timeout:  30_000,
+        reporter: ‘auto’,
         coverage: true,
         coverageGoals: {
-          './elements/emoji-picker.js':     { lines: 100 },
-          './elements/subscribe-button.js': { lines:  71 },
+          ‘./elements/emoji-picker.js’:      { lines: 100 },
+          ‘./elements/subscribe-button.js’:  { lines:  71 },
         },
       };
 
@@ -104,7 +115,7 @@ x-test — run TAP-compliant browser tests from the command line
     auto-disabled when “--name-pattern” is set — the numbers would only
     reflect the filtered subset of tests and misgrade the goals.
 
-    “coverageGoals” keys may target either JS or CSS files (or any path
+    The “coverageGoals” keys may target either JS or CSS files (or any path
     served by the dev server); the same { lines } axis applies to both.
     JS coverage comes from V8; CSS coverage comes from Chromium’s
     rule-usage tracker — both are reported as line percentages.
@@ -121,15 +132,28 @@ x-test — run TAP-compliant browser tests from the command line
       const unreachable = defensiveFallback;
 
       /* x-test:coverage ignore next 3 */
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === ‘development’) {
         debugHelper();
       }
+
+  CSS COVERAGE HARNESS
+    Chromium credits a CSS rule as “used” only when a matching element is
+    still attached at coverage-stop time. Hygienic per-test fixtures that
+    create-and-remove elements end up reporting 0% even when they
+    exercised the rules. The workaround is a separate “harness” page that
+    renders every variant once and leaves them attached. Run it with
+    “--coverage-goals” to override the main config’s goals for that
+    single invocation. See the README for a full example.
 
   NOTES
     In general, a development server must be running and responding to
     initiate tests via “x-test-cli”. The “--name-pattern” CLI argument
     maps to a browser-side “?x-test-name-pattern” search param on the
     resulting test page.
+
+    If the initial navigation returns an HTTP >= 400 status the CLI bails
+    immediately (exit 1) rather than waiting for the timeout. Check that
+    your dev server is running and the URL is reachable.
 
   EXAMPLES
     # Run with defaults from x-test.config.js
@@ -139,15 +163,16 @@ x-test — run TAP-compliant browser tests from the command line
     x-test --url=http://127.0.0.1:8080/test/ --client=playwright --browser=chromium --coverage=true
 
     # Filter to a single describe block
-    x-test --name-pattern="render"
+    x-test --name-pattern=”render”
 
-    # CI matrix example
-    x-test --client=playwright --browser=firefox --reporter=tap
+    # CI matrix example — fan out across engines under playwright
+    x-test --client=playwright --browser=chromium --reporter=tap
+    x-test --client=playwright --browser=firefox  --reporter=tap
+    x-test --client=playwright --browser=webkit   --reporter=tap
 
   EXIT CODES
     0   All tests passed (and, if --coverage=true, all goals met).
-    1   One or more tests failed, or a coverage goal was not met.
-    2   Invocation error (bad flag, missing url, client not installed).
+    1   Anything else — test failure, missed coverage goal, or invocation error.
 
   SEE ALSO
     https://github.com/Netflix/x-test
@@ -202,23 +227,26 @@ diagnostic block to the TAP output. JS and CSS files share the same
 
 #### Config file
 
-`x-test.config.js` at the project root declares which files to grade and
-the line-coverage percentage each one must meet. Full example with every
-supported key:
+`x-test.config.js` at the project root is the persistent alternative to
+passing flags every run. Full example with every supported key:
 
 ```js
 // x-test.config.js
 export default {
-  // OPTIONAL — resource root of the URL origin: the directory the dev server
-  //  serves at `/`. Used to resolve `coverageGoals` keys on disk. Defaults to
-  //  `process.cwd()`. Must be `./`- or `../`-prefixed.
-  root:     './src',
+  // Connection
+  url:      'http://127.0.0.1:8080/test/',
+  client:   'playwright',             // 'puppeteer' | 'playwright'
+  browser:  'chromium',              // 'chromium' | 'firefox' | 'webkit'
+  timeout:  30_000,                  // ms; default 30000
+  reporter: 'auto',                  // 'tap' | 'auto'; default 'auto'
 
-  // REQUIRED when `--coverage=true`. Per-file line-coverage goals. Keys are
-  //  paths inside `root` — equivalently, the URL path the dev server serves
-  //  the file at. Values are `{ lines: N }` where N is the minimum percent
-  //  (0–100) required for the run to pass.
+  // Coverage (Chromium only)
+  root:     './src',                 // resource root; default cwd
+  coverage: true,
   coverageGoals: {
+    // REQUIRED when coverage: true. Per-file line-coverage goals. Keys are
+    //  `./`- or `../`-prefixed paths inside `root`. Values are `{ lines: N }`
+    //  where N is the minimum percent (0–100) required for the run to pass.
     './src/foo.js':        { lines: 100 },
     './src/bar.js':        { lines:  80 },
     './src/flaky-util.js': { lines:  60 },
@@ -226,6 +254,8 @@ export default {
   },
 };
 ```
+
+Note: `--name-pattern` is CLI-only and cannot be set in the config file.
 
 Behavior of each target:
 
@@ -235,8 +265,8 @@ Behavior of each target:
   file is read from disk to give a real denominator, and appears in
   `lcov.info` as all-red so the gap is visible in editor integrations.
 - **In config and not on disk** → `(missing)`, exit 1. Catches typos.
-- `--coverage=true` without any `coverageGoals` is an invocation error
-  (exit code `2`).
+- `--coverage=true` without any `coverageGoals` / `--coverage-goals` is an
+  invocation error.
 
 CSS files whose rules are exercised by transient (created-and-removed) fixtures
 may report 0% even when tests exercise them — see *CSS coverage harness* below
@@ -296,8 +326,9 @@ shape — only the coverage *measurement* lives in a different file.
 #### Output
 
 A `./coverage/lcov.info` file is emitted in standard LCOV format with paths
-relative to cwd. Third-party tooling — editor integrations, CI uploaders, HTML
-report generators — reads files in this format out-of-the-box.
+relative to the resource root (`root` config key; defaults to cwd).
+Third-party tooling — editor integrations, CI uploaders, HTML report generators
+— reads files in this format out-of-the-box.
 
 The TAP summary shows got vs. goal per target:
 
@@ -306,8 +337,6 @@ The TAP summary shows got vs. goal per target:
 #
 # ok     - 80% line coverage goal (got 91.3%)  | ./src/foo.js
 # not ok - 60% line coverage goal (got 54.1%)  | ./src/flaky-util.js
-#
-# (see ./coverage/lcov.info)
 ```
 
 #### Scope: non-transpiled code only
@@ -335,9 +364,9 @@ environment variables.
 
 - `0` — all tests passed (and, when `--coverage=true`, all coverage goals met).
 - `1` — a test failed, the plan didn’t match the asserts seen, the browser
-  emitted a `Bail out!`, the driver crashed, or a coverage goal was missed.
-- `2` — invocation error (e.g., `--coverage=true` without `coverageGoals`
-  in `x-test.config.js`).
+  emitted a `Bail out!`, the driver crashed, a coverage goal was missed, the
+  initial navigation returned an HTTP >= 400 status, or the invocation was
+  invalid (bad flag, missing URL, client not installed).
 
 ## Configuring Playwright
 

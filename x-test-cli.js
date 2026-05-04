@@ -83,6 +83,7 @@ x-test — run TAP-compliant browser tests from the command line
         client:   'playwright',
         browser:  'chromium',
         timeout:  30_000,
+        reporter: 'auto',
         coverage: true,
         coverageGoals: {
           './elements/emoji-picker.js':      { lines: 100 },
@@ -131,6 +132,10 @@ x-test — run TAP-compliant browser tests from the command line
     initiate tests via “x-test-cli”. The “--name-pattern” CLI argument
     maps to a browser-side “?x-test-name-pattern” search param on the
     resulting test page.
+
+    If the initial navigation returns an HTTP >= 400 status the CLI bails
+    immediately (exit 1) rather than waiting for the timeout. Check that
+    your dev server is running and the URL is reachable.
 
   EXAMPLES
     # Run with defaults from x-test.config.js
