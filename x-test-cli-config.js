@@ -15,7 +15,6 @@ import { pathToFileURL } from 'node:url';
  * @property {number} [timeout]
  * @property {boolean} [coverage]
  * @property {CoverageGoals} [coverageGoals]
- * @property {string} [namePattern]
  * @property {string} [reporter]
  */
 
@@ -74,13 +73,13 @@ export class XTestCliConfig {
   //  bare/absolute/`./`-prefixed paths in their config.
   static #RELATIVE_PREFIXES = ['./', '../'];
 
-  // Strict allowlist of recognized keys. Used by both the CLI and config
-  //  validators — CLI args (kebab-cased) and config keys (camelCase) draw
-  //  from the same set. Unknown keys throw rather than no-op.
-  static #KEYS = [
-    'url', 'root', 'client', 'browser', 'timeout',
-    'coverage', 'coverageGoals', 'namePattern', 'reporter',
+  // Separate allowlists for config-file keys vs CLI keys. `namePattern` is
+  //  CLI-only — it's a one-off filter, not a persistent project setting.
+  static #CONFIG_KEYS = [
+    'url', 'root', 'client', 'browser', 'timeout', 'coverage', 'coverageGoals',
+    'reporter',
   ];
+  static #CLI_KEYS = [...XTestCliConfig.#CONFIG_KEYS, 'namePattern'];
 
   static #DEFAULT_TIMEOUT  = 30_000;
   static #DEFAULT_REPORTER = 'auto';
@@ -155,8 +154,11 @@ export class XTestCliConfig {
     // Past the guard, `config` is narrowed to `Record<string, unknown>` —
     //  individual property values still need narrowing before use.
     for (const key of Object.keys(config)) {
-      if (!XTestCliConfig.#KEYS.includes(key)) {
-        const allowed = XTestCliConfig.#KEYS.map(allowedKey => `"${allowedKey}"`).join(', ');
+      if (key === 'namePattern') {
+        throw new Error('"namePattern" is not supported in x-test.config.js — use --name-pattern on the command line instead.');
+      }
+      if (!XTestCliConfig.#CONFIG_KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#CONFIG_KEYS.map(allowedKey => `"${allowedKey}"`).join(', ');
         throw new Error(`Unknown config key "${key}" in x-test.config.js. Allowed: ${allowed}.`);
       }
     }
@@ -180,11 +182,6 @@ export class XTestCliConfig {
     if (config.coverage !== undefined && typeof config.coverage !== 'boolean') {
       throw new Error(`config.coverage must be a boolean, got ${XTestCliConfig.#describe(config.coverage)}.`);
     }
-    if (config.namePattern !== undefined) {
-      if (typeof config.namePattern !== 'string' || config.namePattern === '') {
-        throw new Error(`config.namePattern must be a non-empty string, got ${XTestCliConfig.#describe(config.namePattern)}.`);
-      }
-    }
     if (config.reporter !== undefined) {
       XTestCliConfig.#assertEnum(config.reporter, XTestCliConfig.#SUPPORTED_REPORTERS, 'config.reporter');
     }
@@ -199,8 +196,8 @@ export class XTestCliConfig {
    */
   static validateCli(cli) {
     for (const key of Object.keys(cli)) {
-      if (!XTestCliConfig.#KEYS.includes(key)) {
-        const allowed = XTestCliConfig.#KEYS.map(k => `"--${XTestCliConfig.#kebab(k)}"`).join(', ');
+      if (!XTestCliConfig.#CLI_KEYS.includes(key)) {
+        const allowed = XTestCliConfig.#CLI_KEYS.map(k => `"--${XTestCliConfig.#kebab(k)}"`).join(', ');
         throw new Error(`Unknown argument "--${XTestCliConfig.#kebab(key)}". Allowed: ${allowed}.`);
       }
     }
@@ -274,7 +271,7 @@ export class XTestCliConfig {
       throw new Error(`"--client=${client}" does not support "--browser=${browser}". Allowed: ${list}.`);
     }
 
-    const namePattern  = cli.namePattern ?? config.namePattern;
+    const namePattern  = cli.namePattern;
     const root         = cli.root        ?? config.root        ?? '.';
     const reporterMode = cli.reporter    ?? config.reporter    ?? XTestCliConfig.#DEFAULT_REPORTER;
 
