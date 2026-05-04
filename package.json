@@ -46,7 +46,7 @@
     "/demo"
   ],
   "peerDependencies": {
-    "@netflix/x-test": "^2.0.0-rc.6",
+    "@netflix/x-test": "^2.0.0",
     "playwright": ">=1.40.0",
     "puppeteer": ">=22.0.0"
   },
@@ -59,7 +59,7 @@
     }
   },
   "devDependencies": {
-    "@netflix/x-test": "^2.0.0-rc.6",
+    "@netflix/x-test": "^2.0.0",
     "eslint": "^9.20.1",
     "eslint-plugin-jsdoc": "62.8.0",
     "playwright": "^1.59.1",

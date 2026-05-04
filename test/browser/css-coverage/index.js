@@ -10,11 +10,11 @@
 //  Run this page with `--coverage-goals` to override the project's
 //  main goals for a single invocation. See README.md.
 
-import { describe, it, assert } from '@netflix/x-test/x-test.js';
+import { suite, test, assert } from '@netflix/x-test/x-test.js';
 import './component.js';
 
-describe('css coverage harness', () => {
-  it('renders <css-coverage-component> with a shadow root (persistent)', () => {
+suite('css coverage harness', () => {
+  test('renders <css-coverage-component> with a shadow root (persistent)', () => {
     const element = document.createElement('css-coverage-component');
     document.body.append(element);
     assert(element.shadowRoot !== null);
